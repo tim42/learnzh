@@ -1,0 +1,143 @@
+
+# a set of generic utilities
+
+# replace uniq, but without the requirement of having to sort stuff
+function unsorted_uniq
+{
+    # may consume a bit too much memory...
+    awk '!x[$0]++'
+}
+
+function trim
+{
+    awk '{$1=$1};1'
+}
+
+
+const_color_red="$(tput setaf 1)"
+const_color_green="$(tput setaf 2)"
+const_color_blue="$(tput setaf 4)"
+const_color_cyan="$(tput setaf 6)"
+const_format_bold="$(tput bold)"
+const_format_italic="$(tput sitm)"
+const_format_reset="$(tput sgr0)"
+
+# note: -n does nothing
+function echo_error
+{
+    echo -n "${const_color_red}${const_format_bold}"
+    echo -n "$@"
+    echo "${const_format_reset}"
+}
+
+function echo_entry
+{
+    echo -n "${const_color_blue}${const_format_bold}"
+    echo -n "$@"
+    echo "${const_format_reset}"
+}
+
+function echo_success
+{
+    echo -n "${const_color_green}"
+    echo -n "$@"
+    echo "${const_format_reset}"
+}
+
+function echo_notice
+{
+    echo -n "${const_format_bold}"
+    echo -n "$@"
+    echo "${const_format_reset}"
+}
+
+# for debug purposes
+function do_clear
+{
+    (( VERBOSE >= 1 )) || clear
+}
+
+function trim_content
+{
+    sed -e 's/{{.*}}//g' # remove sound stuff
+}
+
+
+function format_descriptions # descr
+{
+    local descriptions="$1"
+    awk '$0=" - "$0' <<<"$descriptions"
+}
+
+function format_word_info # word, [extended-info:false]
+{
+    local word="$1"
+    local ex_info="${2:-false}"
+    [ "$ex_info" != 'true' ] && ex_info=false
+
+    [ -z "$word" ] && return
+
+    local zhuyin="$(db_get_zhuyin "$word")"
+    local descriptions="$(db_get_descriptions "$word")"
+    local notes="$(db_get_descriptions "@$word")"
+    local descr_line_count=$(wc -l <<<"$descriptions")
+
+
+    (( descr_line_count <= 1 )) &&
+        (echo -n "${const_color_blue}$word${const_format_reset} [[ ${const_color_cyan}$zhuyin${const_format_reset} ]] : " ; echo "$descriptions" ) ||
+        ( echo -e "${const_color_blue}$word${const_format_reset} [[ ${const_color_cyan}$zhuyin${const_format_reset} ]] :\n$(format_descriptions "$descriptions")" )
+
+    [ ! -z "$notes" ] && (
+        echo 'usage notes:'
+        format_descriptions "$notes"
+    )
+
+
+    # query wiktionary
+    local wiktionary_data="$(wiktionary_get_word_data "$word")"
+    local wdescr="$(grep -E "^$1\|" <<<"$wiktionary_data" | cut -d'|' -f${const_db_descr}-   | tr '_' ' ' )"
+    local wnote="$(grep -E "^@$1\|" <<<"$wiktionary_data" | cut -d'|' -f${const_db_descr}-   | tr '_' ' ' )"
+    local wex="$(grep -E "^#$1\|" <<<"$wiktionary_data" | cut -d'|' -f${const_db_descr}- | tr -d '^' | tr '_' ' ' | perl -p -e 's/\{.*?\}//g;' )"
+
+    ( [ ! -z "$wdescr" ]  || [ ! -z "$wnote" ] ) && echo '  --------------- '
+
+    [ ! -z "$wdescr" ] && wiktionary_format_description "$wdescr"
+    [ ! -z "$wnote" ] && wiktionary_format_description "$wnote"
+
+    $ex_info && [ ! -z "$wex" ] &&
+    {
+        echo '  --------------- '
+        wiktionary_format_example <<<"$wex"
+    }
+}
+
+# single-line word info
+function format_short_word_info # word, [max-column:120]
+{
+    local word="$1"
+    local max_line_length=${2:-120}
+
+    local zhuyin="$(db_get_zhuyin "$word")"
+    local descriptions="$(db_get_descriptions "$word")"
+
+    local current_line="${const_color_blue}$word${const_format_reset} [[ ${const_color_cyan}$zhuyin${const_format_reset} ]] :"
+    local initial_affectation=true
+    local line=
+    while read -r line
+    do
+        (( ${#current_line} + ${#line} >= max_line_length )) &&
+        {
+            echo "$current_line"
+            current_line="    $line"
+            initial_affectation=false
+        } ||
+        {
+            $initial_affectation && current_line="$current_line $line"
+            $initial_affectation || current_line="$current_line / $line"
+            initial_affectation=false
+        }
+    done <<<"$descriptions"
+
+    echo "$current_line"
+}
+

@@ -1,0 +1,5 @@
+
+
+usage_ext_cmd_tr="[english words]"
+help_ext_cmd_tr="Find words whose description matches the input words"
+

@@ -1,0 +1,13 @@
+
+
+function ext_cmd_tr
+{
+    local words="$1"
+
+    local line=
+    db_get_matching_descr "$words" | while read -r line
+    do
+        format_word_info "$line"
+    done
+}
+

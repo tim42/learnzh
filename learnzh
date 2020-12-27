@@ -1,0 +1,475 @@
+#!/bin/bash
+#
+# Copyright (c) 2020 Timothée Feuillet
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# NOTE: THE FOLLOWING SCRIPT IS BASED ON PRIG. (which really isn't a generator)
+# Base setup has been removed (we don't need the same setup as prig can require).
+
+project_name="learnzh"
+
+this_file="$(pwd)/$0"
+launch_cwd="$(pwd)"
+this_directory="$(pwd)"
+
+gbl_opt_log="./$project_name.log"
+
+# print and die
+function die # (code, message...)
+{
+  code=$1
+  shift
+  echo ${command_verb:-[core]}: "$@" | tee -a "$gbl_opt_log" 1>&2
+  exit $code
+  exit 1
+}
+function diecv # (message...)
+{
+  die 1 "$@"
+}
+
+function debug_log # (message...)
+{
+    local redir='/dev/null'
+    (( VERBOSE )) && redir='&2'
+    echo ' DD ' ${command_verb:-[core]}: "$@" |
+    (
+        (( VERBOSE )) || tee -a "$gbl_opt_log" 1>/dev/null
+        (( VERBOSE )) && tee -a "$gbl_opt_log"
+    )
+}
+function log # (message...)
+{
+  echo ' -- ' ${command_verb:-[core]}: "$@" | tee -a "$gbl_opt_log"
+}
+
+function __log_cmd
+{
+  echo -e '\n------------------------------------------------------------------------------\n'"$@":'\n'
+  "$@"
+  cmd_exit_code=$?
+  [ -z "$cmd_exit_code" ] && cmd_exit_code=512
+  echo -e '\n-- exited with code:' $cmd_exit_code
+}
+function log_cmd # (cmd, args...)
+{
+  debug_log executing: "$@"
+
+  (( VERBOSE )) && __log_cmd "$@" 1>>"$gbl_opt_log" 2>&1
+  (( VERBOSE )) || __log_cmd "$@" &>>"$gbl_opt_log"
+
+  (( $cmd_exit_code != 0 )) && debug_log '           '"$(printf "%${#1}s" | tr ' ' '^' )"' command exited with code' $cmd_exit_code
+  return $cmd_exit_code
+}
+
+# tee-without-subshell/pipe/forking the command
+function tee_cmd # (cmd, args...)
+{
+  debug_log executing: "$@"
+
+  echo -e '\n------------------------------------------------------------------------------\n'"$@":'\n' 1>>"$gbl_opt_log" 2>&1
+
+  (( VERBOSE )) || "$@" > >(tee -a "$gbl_opt_log") 2>>"$gbl_opt_log"
+  (( VERBOSE )) && "$@" > >(tee -a "$gbl_opt_log") 2>&1
+  cmd_exit_code=$?
+  [ -z "$cmd_exit_code" ] && cmd_exit_code=512
+  echo -e '\n-- exited with code:' $cmd_exit_code 1>>"$gbl_opt_log" 2>&1
+
+  (( $cmd_exit_code != 0 )) && debug_log '           '"$(printf "%${#1}s" | tr ' ' '^' )"' command exited with code' $cmd_exit_code
+  return $cmd_exit_code
+}
+
+##
+##  ENV CHECKS
+##
+
+
+
+function has # (command)
+{
+  hash "$1" &>/dev/null
+}
+
+function cmdcheck # (command)
+{
+  debug_log "checking for '$1'..."
+  has "$1" || die 2 "command not found: '$1' is required by $project_name"
+}
+
+function load_rc_file # file
+{
+    debug_log 'loading configuration file' "$1"
+    log_cmd . "$1"
+}
+
+# check for required builtins
+cmdcheck typeset
+cmdcheck declare
+cmdcheck compgen
+
+# check for required commands
+cmdcheck cat
+cmdcheck tee
+cmdcheck cut
+cmdcheck grep
+cmdcheck head
+cmdcheck sed
+cmdcheck tail
+cmdcheck tr
+cmdcheck curl
+
+
+##
+##  SETUP VARS
+##
+
+# global options definition
+gbl_opt_skip_unknown=false
+help_gbl_opt_skip_unknown="Do not generate an error when a flag is not recognized"
+
+gbl_opt_clear_logs=true
+help_gbl_opt_skip_unknown="Clear the log file when starting $project_name"
+
+gbl_opt_log="./$project_name.log"
+help_gbl_opt_log="The log file where output of commands are written"
+
+gbl_opt_ext_command_dir="./cmd/"
+help_gbl_opt_ext_command_dir="Indicate the folder that hold the external $project_name commands"
+
+gbl_opt_ext_utility_dir="./utilities"
+help_gbl_opt_ext_utility_dir="Indicate the folder that hold the necessary utilities for $project_name"
+
+# conf var definition (prefixed by conf_)
+conf_base_path="$HOME/.$project_name"
+help_conf_base_path="Base path where all the DB/cache files will be located"
+
+# load options for external commands. We need to load the config file at least once so that we have $gbl_opt_ext_command_dir set
+# then we will reload the configuration so that variables defined in that configuration will overwrite commands variables
+rc_file="${project_name}rc"
+home_rc_file="$HOME/.$rc_file"
+
+[ -f "$home_rc_file" ] && load_rc_file "$home_rc_file"
+[ -f ./.$rc_file ] && load_rc_file ./.$rc_file
+main_rc_file="$conf_base_path/$rc_file"
+[ -f "$main_rc_file" ] && load_rc_file "$main_rc_file"
+
+
+# load utilities: (they can have some conf too)
+ext_utilities="$(compgen -A file "$gbl_opt_ext_utility_dir/utility_")"
+for cmd_opt in $ext_utilities
+do
+  log_cmd . "$cmd_opt"
+done
+
+# load external commands conf:
+ext_command_options="$(compgen -A file "$gbl_opt_ext_command_dir/cmd_opt_")"
+for cmd_opt in $ext_command_options
+do
+  log_cmd . "$cmd_opt"
+done
+
+# re-load the rc file, so that their content is applied
+[ -f "$home_rc_file" ] && load_rc_file "$home_rc_file"
+[ -f ./.$rc_file ] && load_rc_file ./.$rc_file
+main_rc_file="$conf_base_path/$rc_file"
+[ -f "$main_rc_file" ] && load_rc_file "$main_rc_file"
+
+
+##
+##  UTILITY FUNCTIONS
+##
+
+
+function var_exists # (var-name)
+{
+  typeset -p $1 &>/dev/null
+}
+
+##
+##  BUILTIN COMMANDS
+##
+
+
+# the help command
+usage_ext_cmd_help="[opt-command-verb]"
+help_ext_cmd_help="Print help of another command verb / list command verbs"
+function ext_cmd_help # (command_verb?)
+{
+  if (( $# == 0 ))
+  then
+    # list everything
+    echo 'listing all available commands:'
+
+    # builtins
+    builtin_commands="$(compgen -A function "ext_cmd_")"
+    for cmd in $builtin_commands
+    do
+      echo '-------------------------------------------------------------------------------'
+      cmd="${cmd:8}"
+      cmd_help_print_options "$cmd" false
+    done
+
+    # external commands
+    ext_commands="$(compgen -A file "$gbl_opt_ext_command_dir/cmd_opt_")"
+    for cmd in $ext_commands
+    do
+      echo '-------------------------------------------------------------------------------'
+      file="$cmd"
+      cmd="${cmd##*/}"
+      cmd="${cmd:8}"
+      cmd_help_print_options "$cmd" false
+    done
+  else
+    # list just one
+    if ! has ext_cmd_"$1"
+    then
+      # try to load it
+      cmd_opt_path="$gbl_opt_ext_command_dir/cmd_opt_$1"
+      debug_log "$1 is not an internal command: trying to load its options from $cmd_opt_path"
+      [ -e "$cmd_opt_path" ] && . "$cmd_opt_path" || diecv "Unable to find command '$1'"
+    fi
+
+    cmd_help_print_options "$1"
+  fi
+}
+
+function cmd_help_print_options # (command_verb, print_opt_text[true])
+{
+    echo "$1:"
+    local do_print_text="${2:-true}"
+    [ "$do_print_text" == 'true' ] || do_print_text=false
+
+    # print help message (if it exists)
+    help_var="help_ext_cmd_$1"
+    var_exists "$help_var" && echo "${!help_var}" && echo
+
+
+    help_var_list="$(compgen -A variable "cmd_opt_$1")"
+    help_fnc_list="$(compgen -A function "cmd_opt_$1")"
+
+    # print usage (if it exists)
+    usage_var="usage_ext_cmd_$1"
+
+    if [ -z "$help_var_list$help_fnc_list" ]
+    then
+      if var_exists "$usage_var"
+      then
+        echo "  usage: $1 [--] ${!usage_var}"
+      else
+        echo "  usage: $1 [--]"
+      fi
+      echo
+      return
+    else
+      var_exists "$usage_var" && echo "  usage: $1 [options] [--] ${!usage_var}" && echo
+    fi
+
+    # print options
+    echo '  options:'
+    $do_print_text && echo "    most options can be negated by preprending 'no-' to them: --no-xyz-abc instead of --xyz-abc=false"
+    $do_print_text && echo
+    $do_print_text && echo
+
+    # loop over variables
+    for var in $help_var_list
+    do
+      optname="${var:8}"
+      optname="${optname//_/-}"
+      optname="${optname:${#1}}"
+      optname="${optname:1}"
+      echo -n "  --${optname} (current value: '${!var}' )"
+      help_var="help_$var"
+      var_exists "$help_var" && echo -e ":\n    ${!help_var}" || echo
+      echo
+    done
+
+    # loop over functions
+    for fnc in $help_fnc_list
+    do
+      echo -n "  --${fnc:8}"
+      help_var="help_$fnc"
+      var_exists "$help_var" && echo -e ":\n    ${!help_var}" || echo
+      echo
+    done
+}
+
+
+
+##
+##  OPTIONS
+##
+## format for options is:
+## <project_name> [gbl opts] command-word [command word opts]
+##
+## internally, options can either be functions or variables
+##
+
+
+
+help_gbl_opt_help="Print this message and exit"
+function gbl_opt_help # (print_opt_text[true])
+{
+  local do_print_text="${1:-true}"
+  [ "$do_print_text" == 'true' ] || do_print_text=false
+
+  echo 'options:'
+  $do_print_text && echo "  most options can be negated by preprending 'no-' to them: --no-xyz-abc instead of --xyz-abc=false"
+  $do_print_text && echo
+  $do_print_text && echo
+
+  # loop over variables
+  help_var_list="${!gbl_opt_@}"
+  for var in $help_var_list
+  do
+    optname="${var:8}"
+    optname="${optname//_/-}"
+    echo -n "  --${optname} (current value: '${!var}' )"
+    help_var="help_$var"
+    var_exists "$help_var" && echo -e ":\n    ${!help_var}" || echo
+    echo
+  done
+
+  # loop over functions
+  help_fnc_list="$(compgen -A function 'gbl_opt_')"
+  for fnc in $help_fnc_list
+  do
+    optname="${fnc:8}"
+    optname="${optname//_/-}"
+    echo -n "  --${optname}"
+    help_var="help_$fnc"
+    var_exists "$help_var" && echo -e ":\n    ${!help_var}" || echo
+    echo
+  done
+
+  # exit
+  exit
+}
+
+help_gbl_opt_load_config="Load additional configuration files. Can be repeated as much as needed."
+function gbl_opt_load_config # (file)
+{
+  debug_log "loading config file '$1'..."
+  [ ! -f "$1" ] && die 10 "load-config: cannot find config file '$1'"
+  . "$1"
+}
+
+# global option parsing core
+while (( $# > 0 )) && [ "${1:0:2}" = "--" ]
+do
+  option="${1#--}"
+  option_value="${option#*=}"
+  [ -z "$(grep <<<"$option" = )" ] && option_value=true
+  option="${option%%=*}"
+  option="${option//-/_}"
+  [ "${option:0:3}" = "no_" ] &&
+  {
+    option_value=false
+    option="${option#no_}"
+  }
+
+  has "gbl_opt_$option" && option_is_command=true || option_is_command=false
+  var_exists "gbl_opt_$option" && option_is_var=true || option_is_var=false
+  var_exists "boolean_gbl_opt_$option" && option_is_bool=true || option_is_bool=false
+
+  $option_is_bool && { [ "$option_value" == 'true' ] || option_value=false ; }
+
+  $option_is_var || $option_is_command || [ "$gbl_opt_skip_unknown" = true ] || die 3 "unknown option: $1"
+
+  debug_log "gbl_opt_${option} => $option_value"
+
+  $option_is_var && declare -g gbl_opt_${option}="$option_value"
+  $option_is_command && gbl_opt_${option} "$option_value"
+
+  shift
+done
+
+function run_command # (cmd, opts...?)
+{
+  (( $# == 0 )) && die 4 "no command provided..."
+
+  # save the command verb and shift
+  command_verb="${1//-/_}"
+  shift
+
+  debug_log 'command verb:' $command_verb
+
+  # check that the command exists
+  if ! has ext_cmd_"$command_verb"
+  then
+    debug_log "searching for $command_verb in 'external' commands..."
+    cmd_is_external=true
+    cmd_option_path="$gbl_opt_ext_command_dir/cmd_opt_$command_verb"
+    cmd_script_path="$gbl_opt_ext_command_dir/cmd_$command_verb"
+
+    if [ -e "$cmd_option_path" ] && [ -e "$cmd_script_path" ]
+    then
+      debug_log "options for $command_verb have been located in $cmd_option_path"
+      debug_log "code for $command_verb have been located in $cmd_script_path"
+    else
+      die 5 "$command_verb: command verb does not exists."
+    fi
+  else
+    cmd_is_external=false
+  fi
+
+  # command verb option parsing core
+  while (( $# > 0 )) && [ "${1:0:2}" = "--" ] && [ "$1" != '--' ]
+  do
+    option="${1#--}"
+    option_value="${option#*=}"
+    [ -z "$(grep <<<"$option" = )" ] && option_value=true
+    option="${option%%=*}"
+    option="${option//-/_}"
+    [ "${option:0:3}" = "no_" ] &&
+    {
+      option_value=false
+      option="${option#no_}"
+    }
+
+    has "cmd_opt_${command_verb}_$option" && option_is_command=true || option_is_command=false
+    var_exists "cmd_opt_${command_verb}_$option" && option_is_var=true || option_is_var=false
+    var_exists "boolean_cmd_opt_${command_verb}_$option" && option_is_bool=true || option_is_bool=false
+
+    $option_is_bool && { [ "$option_value" == 'true' ] || option_value=false ; }
+    $option_is_var || $option_is_command || [ "$gbl_opt_skip_unknown" = true ] || die 3 "unknown ${command_verb} option: $1"
+
+    debug_log "cmd_opt_${command_verb}_${option} => $option_value"
+
+    $option_is_var && declare -g cmd_opt_${command_verb}_${option}="$option_value"
+    $option_is_command && cmd_opt_${command_verb}_${option} "$option_value"
+
+    shift
+  done
+
+  # skip the -- terminator
+  [ "$1" = '--' ] && shift
+
+  debug_log "executing 'ext_cmd_$command_verb $@' ..."
+  $cmd_is_external && . "$cmd_script_path"
+  has ext_cmd_"$command_verb" || die 6 "$command_verb: malformed command verb script. Unable to run it. (missing entry point)"
+
+  # call the command verb this is the last thing the core does
+  ext_cmd_"$command_verb" "$@"
+}
+
+# clear the log file
+[ "$gbl_opt_clear_logs" = "true" ] && echo "[log start at $(date)]" >"$gbl_opt_log"
+
+run_command "$@"

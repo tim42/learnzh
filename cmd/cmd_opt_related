@@ -1,0 +1,5 @@
+
+
+usage_ext_cmd_related="[characters]"
+help_ext_cmd_related="Find words containing the characters"
+

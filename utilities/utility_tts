@@ -1,0 +1,91 @@
+
+## Perform TTS using the google-cloud service
+## It requires a specific file to be set that acts as an auth key for the services
+
+conf_tts_cache="$conf_base_path/ttscache" # dumb cache where only the last query is stored. Avoid repetitive queries. (this allows me to code dumb)
+conf_tts_cache_lock="$conf_base_path/ttscache.lock"
+
+# can be changed as necessary in the conf file. It defaults to the env variable, if set.
+conf_google_app_creds="$conf_base_path/gcloud-auth.json"
+[ -f "$conf_google_app_creds" ] || conf_google_app_creds="$GOOGLE_APPLICATION_CREDENTIALS"
+help_conf_google_app_creds="Path to the google cred JSON file"
+
+gbl_opt_use_tts=true
+help_gbl_opt_use_tts="Whether or not text-to-speech will be enabled or disabled (note: if the requirements are not present, it will still be disabled)"
+
+# we optionally enable TTS as the requirement are not common
+has gcloud && has jq && has play && has base64 && can_use_tts=true || can_use_tts=false
+
+$can_use_tts && debug_log "TTS Enabled"
+$can_use_tts || debug_log "TTS Disabled"
+
+# checksum tool:
+tts_checksum_tool="tr -d'\\n'" # not a checksum tool, but will work pre-existing requirements
+has md5sum && tts_checksum_tool=md5sum
+has sha1sum && tts_checksum_tool=sha1sum
+has sha512um && tts_checksum_tool=sha512um
+debug_log "using checksum tool for tts cache: $tts_checksum_tool"
+
+
+function is_tts_enabled
+{
+    { $gbl_opt_use_tts && $can_use_tts ; } || return 1
+    [ ! -f "$conf_google_app_creds" ] && return 1
+    return 0
+}
+
+# output the raw mp3 file to stdout
+function tts # lang, voice, text
+{
+    { $gbl_opt_use_tts && $can_use_tts ; } || { log 1>&2 "TTS disabled, yet there is a call to: tts $@" ; return 1 ; } # TTS is disabled, so no TTS
+    [ ! -f "$conf_google_app_creds" ] && { log 1>&2 "invalid TTS configuration: require a value in conf_google_app_creds" ; return 2 ; }
+
+    local lang="$1"
+    local voice="$1-$2"
+    local text="$3"
+    local data=""
+
+    read -r -d '' data <<EOF
+{
+  "input":{
+    "text":$(jq -Rs . <<<"$text")
+  },
+  "voice":{
+    "languageCode":"$lang",
+    "name":"$voice"
+  },
+  "audioConfig":{
+    "audioEncoding":"MP3"
+  }
+}
+EOF
+
+    local datakey="$(echo "$data" | $tts_checksum_tool)"
+    (
+        local cachekey="$(head -n1 "$conf_tts_cache")"
+
+        [ "$datakey" = "$cachekey" ] &&
+        {
+            # already in cache ! no need to re-query the stuff
+            debug_log "cache hit for TTS data [key: $datakey]"
+            tail -n+2 "$conf_tts_cache"
+            return 0
+        }
+        debug_log "cache miss for TTS data [key: $datakey] vs in cache: [$cachekey]"
+
+        local creds="$( GOOGLE_APPLICATION_CREDENTIALS="$conf_google_app_creds" gcloud auth application-default print-access-token)"
+
+        echo "$datakey" > "$conf_tts_cache"
+        curl -s -X POST -H "Authorization: Bearer $creds" "$@" -H 'Content-Type: application/json; charset=utf-8' -d "$data" 'https://texttospeech.googleapis.com/v1/text:synthesize' | jq -r '.audioContent' | base64 -d | tee -a "$conf_tts_cache"
+    ) 9>"$conf_tts_cache_lock"
+}
+
+function play_mp3
+{
+    play -t mp3 -q -
+}
+
+function tts_play # see tts
+{
+    tts "$@" | play_mp3
+}

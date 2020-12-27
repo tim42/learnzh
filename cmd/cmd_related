@@ -1,0 +1,13 @@
+
+
+function ext_cmd_related
+{
+    local word="$1"
+
+    local line=
+    db_get_related_words "$word" | while read -r line
+    do
+        format_word_info "$line"
+    done
+}
+

@@ -1,0 +1,33 @@
+
+
+function ext_cmd_test
+{
+    $cmd_opt_test_least_recent_first && $cmd_opt_test_most_failed_first && die 4 "Two or more xxx_first options are present at the same time."
+
+    local word=
+    local fnc=
+    local skip_rnd_choice=false
+
+    $cmd_opt_test_least_recent_first && skip_rnd_choice=true && fnc=tdb_sort_by_last_success_time
+    $cmd_opt_test_most_failed_first && skip_rnd_choice=true && fnc=tdb_sort_by_most_failed
+
+    while true
+    do
+        $skip_rnd_choice ||
+        {
+            (( (RANDOM % (cmd_opt_test_non_random_round + 1)) == 0 )) && fnc=tdb_shuf_words ||
+            {
+                local rnd_value=$(( (RANDOM + $(date +%s)) % (cmd_opt_test_default_sort_round + 2) ))
+                ((rnd_value == 0)) && fnc=tdb_sort_by_last_success_time
+                ((rnd_value == 1)) && fnc=tdb_sort_by_most_failed
+                ((rnd_value >= 2)) && fnc=tdb_sort_words
+            }
+        }
+
+        for word in $($fnc | head -n $cmd_opt_test_round_size | shuf)
+        do
+            ex_test_word "$word"
+        done
+    done
+}
+

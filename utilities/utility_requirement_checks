@@ -1,0 +1,17 @@
+
+# Some requirement checks for the project:
+cmdcheck mkdir
+cmdcheck awk
+cmdcheck perl
+cmdcheck tput
+cmdcheck xmllint
+cmdcheck mv
+cmdcheck cp
+cmdcheck date
+cmdcheck sort
+cmdcheck shuf
+cmdcheck wc
+cmdcheck sleep
+cmdcheck less
+cmdcheck opencc # necessary for simplified -> trad translation.
+

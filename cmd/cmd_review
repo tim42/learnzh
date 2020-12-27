@@ -1,0 +1,12 @@
+
+
+function ext_cmd_review
+{
+    local word=
+
+    for word in $(tdb_sort_words)
+    do
+        ex_learn_word "$word"
+    done
+}
+

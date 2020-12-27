@@ -1,0 +1,63 @@
+
+# utilities related to the word DB / Dict
+
+conf_db_file="$conf_base_path/word_db"
+
+
+# DB entries
+const_db_word=1
+const_db_zhuyin=2
+const_db_descr=3
+
+# read the zhuyin from the DB or scrap it from wiktionary. Insert it in the DB if it was missing.
+function db_get_zhuyin # word
+{
+    local zhuyin="$(<"$conf_db_file" grep -E "^$1\|" | head -n1 | cut -d'|' -f${const_db_zhuyin} )"
+
+    [ ! -z "$zhuyin" ] && { echo -n "$zhuyin" ; return ; }
+
+    local zhuyin="$(wiktionary_get_zhuyin "$1" | tr ',' '\n' | trim | unsorted_uniq | tr '\n' ',' | sed -e 's/,$//')"
+
+    echo -n "$zhuyin"
+    sed -e "s/^$1||/$1|$zhuyin|/" -i "$conf_db_file"
+}
+
+# return all the descriptions (one per line) for the word
+function db_get_descriptions # word
+{
+    <"$conf_db_file" grep -E "^$1\|" | cut -d'|' -f${const_db_descr}-     | tr '_' ' ' 
+}
+
+function db_get_related_words # word
+{
+    local word="$1"
+    [ ! -z "$word" ] && <"$conf_db_file" cut -d'|' -f${const_db_word} | grep "$word" | unsorted_uniq
+}
+
+function db_get_matching_descr # param
+{
+    local word="$1"
+    [ ! -z "$word" ] && <"$conf_db_file" cut -d'|' -f${const_db_word},${const_db_descr} | tr '_' ' ' | grep "$word" | cut -d'|' -f1 | unsorted_uniq
+}
+
+function db_contains_word # word
+{
+    <"$conf_db_file" grep -E "^$1\|" 1>&/dev/null
+}
+
+# execute a command for each entries in the DB
+# the command will be called in the following form:
+# cmd "line" "entry-index" "args"...
+# a non-zero return value will stop the loop.
+function db_for_each_entries # cmd args...
+{
+    local command="$1"
+    shift
+    local line=
+    local count=0
+    while read -r line
+    do
+        "$command" "$line" $count "$@" || break
+        let ++count
+    done <"$db_file"
+}

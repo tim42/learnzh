@@ -1,0 +1,114 @@
+
+
+function _create_conf_file # file
+{
+    local file="$1"
+    log "generating config file: $file"
+    log_cmd rm -f "$file"
+
+    echo -n >"$file"
+    cat <<EOF >>"$file"
+##
+##  configuration file
+##  generated on $(has date && date || echo -n '[unknown]')
+##
+
+##
+## CONF VARS
+##
+
+EOF
+    var_list="$(compgen -A variable "conf_")"
+    for var in $var_list
+    do
+      help_var="help_$var"
+      echo "# ${!help_var}" >>"$file"
+      echo "$var='${!var}'" >>"$file"
+      echo >>"$file"
+    done
+
+    cat <<EOF >>"$file"
+
+##
+## GLOBAL OPTIONS
+##
+
+EOF
+
+    var_list="$(compgen -A variable "gbl_opt_")"
+    for var in $var_list
+    do
+      var_exists "noconf_$var" && continue
+
+      help_var="help_$var"
+      echo "# ${!help_var}" >>"$file"
+      echo "$var='${!var}'" >>"$file"
+      echo >>"$file"
+    done
+
+    cat <<EOF >>"$file"
+
+##
+## COMMAND OPTIONS
+##
+
+EOF
+    var_list="$(compgen -A variable "cmd_opt_")"
+    for var in $var_list
+    do
+      var_exists "noconf_$var" && continue
+
+      help_var="help_$var"
+      echo "# ${!help_var}" >>"$file"
+      echo "$var='${!var}'" >>"$file"
+      echo >>"$file"
+    done
+}
+
+function ext_cmd_make_db
+{
+    local raw_dict_file="$conf_base_path/cedict_1_0_ts_utf-8_mdbg.txt"
+
+    # make sure stuff exists, even if empty:
+    mkdir -p "$conf_base_path"
+
+    touch "$conf_test_db_file"
+    touch "$conf_test_db_file_lock"
+
+    touch "$conf_wiktionary_cache"
+    touch "$conf_wiktionary_cache_lock"
+    touch "$conf_wiktionary_zh_cache"
+    touch "$conf_wiktionary_zh_cache_lock"
+
+    [ ! -f "$main_rc_file" ] && _create_conf_file "$main_rc_file"
+    # make sure the source file exists:
+    if [ ! -e "$raw_dict_file" ]
+    then
+        log "Downloading the raw dict file as it does not exist..."
+        curl -s https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz | gunzip -c > "$raw_dict_file"
+    fi
+
+    # download and strip the word frequency file if it does not exists:
+    if [ ! -e "$conf_word_freq_list_file" ]
+    then
+        log "Downloading the word frequency file as it does not exist..."
+        curl -s "https://www.ugent.be/pp/experimentele-psychologie/en/research/documents/subtlexch/subtlexch131210.zip" | gunzip -c | tail -n+2 | cut -d'	' -f1 > "$conf_word_freq_list_file"
+    fi
+
+    # clear the db file & reformat the raw db file:
+    local line=
+    local line_count=$(grep -vE '^#' <"$raw_dict_file" | wc -l)
+    local i=0
+    log "Resetting the DB (source file contains $line_count entries)"
+    grep -vE '^#' <"$raw_dict_file" | while read -r line
+    do
+        (( i % 100 == 0 )) && echo -ne "$i / $line_count entries ($(( i * 100 / (line_count+1) )) %)  \r" 1>&2
+
+        local word="$(cut -d' ' -f1 <<<"$line")"
+        cut -d'/' -f2- <<<"${line:0:-2}" | tr '/' '\n' | awk '$0="'"$word||"'"$0'
+        let ++i
+    done > "$conf_db_file"
+    log
+    log done.
+}
+

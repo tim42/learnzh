@@ -1,0 +1,33 @@
+
+
+function ext_cmd_learn
+{
+    local max_count="${1:-5}"
+
+    local line=
+    local __scratch=
+    local do_break=false
+
+    local i=0
+    echo -ne 'searching for word...\r'
+    while read -u3 -r line
+    do
+        $do_break && break
+        word="$(word_frequency_translate_entry "$line")"
+
+        echo -ne "searching for word: [$i] $word"'...        \r'
+        let i++
+
+        db_contains_word "$word" &&
+        {
+            tdb_contains_word "$word" ||
+            {
+                debug_log "raw entry: $line | converted to $word"
+                ex_learn_word "$word"
+                let --max_count
+                (( max_count <= 0 )) && do_break=true
+            }
+        }
+    done 3<"$conf_word_freq_list_file"
+}
+

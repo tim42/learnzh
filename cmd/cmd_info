@@ -1,0 +1,9 @@
+
+
+function ext_cmd_info # (word)
+{
+    local word="$1"
+    format_word_info "$word" true
+    is_tts_enabled && tts_play cmn-TW Wavenet-A "$word"
+}
+

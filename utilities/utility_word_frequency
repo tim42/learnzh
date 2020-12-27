@@ -1,0 +1,26 @@
+
+conf_word_freq_list_file="$conf_base_path/SUBTLEX-CH-WF.strip.utf8"
+
+# the patch has a simple '|simplified|trad' format. If it contains an entry, it will take precedence over what opencc provides
+conf_word_freq_list_patch_file="./data/word-frequency-patch"
+
+# translate a word frenquency entry in a correct word
+function word_frequency_translate_entry # entry
+{
+    local entry="$1"
+
+    # check for an entry in the patch file:
+    local patch_entry="$(grep -F "|$entry|" <"$conf_word_freq_list_patch_file")"
+    if [ ! -z "$patch_entry" ]
+    then
+        cut -d'|' -f3 <<<"$patch_entry"
+    else
+        opencc -c s2tw.json <<<"$entry" # fallback to opencc
+    fi
+}
+
+
+function word_frequency_get_random_word # ( except-this-word )
+{
+    word_frequency_translate_entry "$(head -n700 "$conf_word_freq_list_file" | grep -Ev "^$1\\|" | shuf | head -n1)"
+}

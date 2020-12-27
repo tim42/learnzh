@@ -1,0 +1,8 @@
+
+
+cmd_opt_learn_count=5
+help_cmd_opt_learn_count="How many words to learn"
+
+#usage_ext_cmd_learn=
+help_ext_cmd_learn="Learn new words"
+

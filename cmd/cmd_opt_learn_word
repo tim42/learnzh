@@ -1,0 +1,5 @@
+
+
+usage_ext_cmd_learn_word="word"
+help_ext_cmd_learn_word="add a single new word to learn"
+

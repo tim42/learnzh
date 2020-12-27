@@ -1,0 +1,16 @@
+
+
+function ext_cmd_learn_word
+{
+    local word="$1"
+    db_contains_word "$word" || {
+        echo_error "The DB does not contains '$word'"
+        return
+    }
+    tdb_contains_word "$word" && {
+        echo_notice "The test DB already contains '$word'"
+        return
+    }
+    ex_learn_word "$word"
+}
+

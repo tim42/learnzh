@@ -1,0 +1,23 @@
+
+
+function ext_cmd_test_sentence
+{
+    is_tts_enabled || die 3 'TTS support is required for this to work'
+
+    local fnc=tdb_shuf_words
+    while true
+    do
+        for word in $($fnc)
+        do
+            ex_learn_sentence__valid "$word" || { echo -n '.' ; continue ; }
+
+            # ex_test_word "$word"
+            ex_learn_sentence "$word"
+
+            echo 'press enter to continue'
+            local _scratch=
+            read -r _scratch
+        done
+    done
+}
+

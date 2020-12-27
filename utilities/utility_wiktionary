@@ -1,0 +1,173 @@
+# utilities related to scrapping wiktionary
+
+# utilities related to the test DB
+conf_wiktionary_cache="$conf_base_path/wcache" # dumb cache where only the last query is stored. Avoid repetitive queries. (this allows me to code dumb)
+conf_wiktionary_cache_lock="$conf_base_path/wcache.lock"
+
+conf_wiktionary_zh_cache="$conf_base_path/wzhcache" # dumb cache where only the last query is stored. Avoid repetitive queries. (this allows me to code dumb)
+conf_wiktionary_zh_cache_lock="$conf_base_path/wzhcache.lock"
+
+
+function wiktionary_curl_edit_page # word
+{
+    local word="$1"
+
+    (
+        flock -x 9
+
+        local cache_word="$(head -n1 "$conf_wiktionary_cache")"
+
+        [ "$cache_word" = "$word" ] &&
+        {
+            # already in cache ! no need to re-query the stuff
+            debug_log "cache hit for wiktionary edit page for: $word"
+
+            tail -n+2 "$conf_wiktionary_cache"
+            return 0
+        }
+
+        debug_log "cache miss for wiktionary edit page for: $word (in cache: $cache_word)"
+
+        echo "$word" > "$conf_wiktionary_cache"
+        local content_url="https://en.wiktionary.org/w/index.php"
+        local content_xmlpath='//*[@id="wpTextbox1"]'
+        curl -G "$content_url" --data-urlencode 'action=edit' --data-urlencode "title=${word}" --silent | xmllint --html --nonet --recover --nowarning --xpath "$content_xmlpath" - 2>/dev/null | perl -pe 's/<.*?>//g' | tee -a "$conf_wiktionary_cache"
+
+    ) 9>"$conf_wiktionary_cache_lock"
+}
+
+function wiktionary_get_zhuyin # word
+{
+    local word="$1"
+
+    (
+        flock -x 9
+
+        local cache_word="$(head -n1 "$conf_wiktionary_zh_cache")"
+
+        [ "$cache_word" = "$word" ] &&
+        {
+            # already in cache ! no need to re-query the stuff
+            debug_log "cache hit for wiktionary raw zhuyin for: $word"
+
+            tail -n+2 "$conf_wiktionary_zh_cache"
+            return 0
+        }
+
+        debug_log "cache miss for wiktionary raw zhuyin for: $word (in cache: $cache_word)"
+
+        local zhuyin_xmlpath='//*[@class="vsSwitcher"]/ul//*[@lang="zh-Bopo"]'
+        local zhuyin_base_url="https://en.wiktionary.org/wiki"
+        local content="$(curl "$zhuyin_base_url/${word}" --silent | xmllint --html --nonet --recover --nowarning --xpath "$zhuyin_xmlpath" - 2>/dev/null | perl -pe 's/<.*?>//g')"
+
+        echo "$content"
+        echo "$word" > "$conf_wiktionary_zh_cache"
+        echo "$content" >> "$conf_wiktionary_zh_cache"
+
+    ) 9>"$conf_wiktionary_zh_cache_lock"
+}
+
+function wiktionary_get_word_data # word
+{
+    local word="$1"
+
+    local content="$(wiktionary_curl_edit_page "$word")"
+    local full_zhuyin="$(wiktionary_get_zhuyin "$word")"
+
+    # walk the content.
+    # grep |m=<pinyin:.+>
+    # start from {{head|zh|<kind:[a-z]+>}} or {{zh-hanzi}}
+    #   - only keep lines starting with '# ' (excluding '#: ' as they are examples)
+    #   - also look for ====Usage notes==== as it contains useful information
+    # it will output:
+    #    {word}|{zhuyin (queried separatly)}|{descr}
+
+    local in_chinese=false
+    local in_def=false
+    local in_usage=false
+    local is_usage_line=false
+    local def_type=
+    local zhuyin=
+
+    local line=
+    while read -r line
+    do
+        $in_chinese && $in_def &&  <<<"${line}" grep -F '=Usage notes=' &>/dev/null && { in_usage=true ; is_usage_line=true ; in_def=false ; }
+        ! $is_usage_line && [ "${line:0:2}" = '==' ]  && [ "${line:0:3}" != '===' ]  && { in_chinese=false ; in_def=false ; in_usage=false ; } 
+
+        if [ "$line" = '==Chinese==' ]
+        then
+            in_chinese=true
+        elif $in_chinese && ! $is_usage_line
+        then
+            # we are in the Chinese section
+
+            # grab the zhuyin:
+            [ "${line:0:3}" = '|m=' ] && { zhuyin="$( <<<"$full_zhuyin" head -n1)" ; full_zhuyin="$( <<<"$full_zhuyin" tail -n+2)" ; }
+
+
+            # definition switch:
+            [ "${line:0:10}" = '{{head|zh|' ] && { in_def=true ; def_kind="$( <<<"${line:10}" tr -d '}' )" ; }
+            [ "${line:0:5}" = '{{zh-' ] && { in_def=true ; def_kind="$( <<<"${line:5}" sed -e 's/}}.*//g' )" ; }
+            [ "${line:0:2}" = '==' ] && { in_def=false ; in_usage=false ; }
+
+            $in_def && [ "${line:0:2}" = '# ' ] &&
+                [ "${line:0:18}" != '# {{lb|zh|literary' ] &&
+                [ "${line:0:19}" != '# {{lb|zh|Cantonese' ] &&
+                [ "${line:0:20}" != '# {{lb|zh|historical' ] &&
+                [ "${line:0:7}" != '# {{†}}' ] &&
+                [ "${line}" != '# {{zh-used2|t}}' ] &&
+                [ "${line}" != '# {{surname|zh}}' ] &&
+                [ "${line}" != '# {{rfdef|zh}}' ] &&
+                [ "${line:0:11}" != '# {{zh-hg}}' ] &&
+                [ "${line:0:15}" != '# {{zh-misspelling' ] &&
+                [ "${line:0:12}" != '# {{zh-only|' ] &&
+                {
+                    echo "${word}|${zhuyin}|$def_kind : ${line:2}"
+                }
+            local is_ex="$( grep -F '{{zh-x|' <<<"${line}" )"
+            $in_usage && ( [ "${line:0:2}" = '* ' ] || [ "${line:0:2}" = '# ' ] || [ "${line:0:2}" = ': ' ] ) && [ -z "$is_ex" ] &&
+            {
+                echo "@${word}|${zhuyin}|${line:2}"
+            }
+            ( $in_def ) && [ ! -z "$is_ex" ] &&
+            {
+                echo "#${word}|${zhuyin}|$( <<<"$line" cut -d'|' -f2,3 | tr '|' '#' | perl -p -e 's/\}\}$//g;')"
+            }
+        fi
+        is_usage_line=false
+    done <<<"$content"
+}
+
+# FIXME: not really great, not really working
+function wiktionary_format_description # entry
+{
+    local base_format="$const_format_reset$const_format_italic"
+    local spec_word="$const_format_bold$const_color_cyan"
+    local gloss_word="$const_color_blue"
+    local sense_word="$const_color_green"
+
+    local entry="$base_format$1$const_format_reset"
+
+    <<<"$entry" perl -p -e 's/(\{\{(lang\|zh\||zh-l\|))|(\{\{(anchor\|enough|,)\}\})//g;' \
+                        -e 's/(}})|(]])/'"$base_format/g;" \
+                        -e 's/\[\[/'"$spec_word/g;" \
+                        -e 's/\{\{(sense)\|/'"$sense_word/g;" \
+                        -e 's/\{\{(gl|gloss|n-g|non-gloss( Definition)?|w|zh-ref)\|/'"$gloss_word/g;" \
+                        -e 's/\{\{t?lb\|zh\|/'"$gloss_word/g;" \
+                        -e 's/\{\{surname\|zh/'"${spec_word}a surname/g;" \
+                        -e 's/\{\{(zh-short)\|([^|]*)\|/Short for \2: /g;' \
+                        -e 's/\{\{(zh-alt-form)\|([^|\n]*)\|?/Alt. form of \2./g;' \
+                        -e 's/\{\{zh-classifier\|/Classifier: /g;' \
+
+}
+
+function wiktionary_format_example
+{
+    local reset="$const_format_reset"
+    local source_color="$const_format_bold$const_color_cyan"
+    local dest_color="$const_format_italic$const_color_green"
+
+    #awk -F '#' "{ print \"ex:\t$source_color\"\$1\"$reset\t\t$dest_color\"\$2\"$reset\" }"
+    awk -F '#' "{ printf \"$source_color%s$reset\\n\\t$dest_color%s$reset\\n\\n\", \$1,\$2 }"
+}

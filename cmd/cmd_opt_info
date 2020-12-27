@@ -1,0 +1,5 @@
+
+
+usage_ext_cmd_info="[word]"
+help_ext_cmd_info="Print info related to a word"
+

@@ -1,0 +1,120 @@
+
+# utilities related to the test DB
+conf_test_db_file="$conf_base_path/test_db" # file where tests will be stored. format: word|try_count|-fail_count|consecutive_successes|last_success_timestamp
+conf_test_db_file_lock="$conf_base_path/test_db.lock"
+
+
+# test DB entries
+const_tdb_word=1
+const_tdb_try_count=2
+const_tdb_fail_count=3
+const_tdb_consecutive_successes=4
+const_tdb_last_success_tm=5
+
+# because sort cannot work with negative number on the same line...
+const_tdb_big_nmuber=999999
+
+function tdb_contains_word # word
+{
+    tdb_read | grep -E "^$1\\|" 1>&/dev/null
+}
+
+# create or replace an entry
+function tdb_write_entry # word, try_count, fail_count, cons. successes, last success tm
+{
+    (
+        flock -x 9
+        <"$conf_test_db_file" grep -vE "^$1\\|" | ( cat ; echo "$1|$2|$((const_tdb_big_nmuber - $3))|$4|$5") > "$conf_test_db_file.tmp"
+        mv -f "$conf_test_db_file.tmp" "$conf_test_db_file"
+    ) 9>"$conf_test_db_file_lock"
+}
+
+# create or update an entry
+# NOTE: dt_fail_count must be a positive number
+function tdb_update_entry # word, dt_try_count, dt_fail_count, penalty
+{
+    local word="$1"
+    local dt_try_count="${2:-0}"
+    local dt_fail_count="${3:-0}"
+    local penalty="${4:-5}"
+    local current_tm="$(date +%s)"
+
+    (
+        flock -x 9
+        local line="$( <"$conf_test_db_file" grep -E "^$1\|" )"
+
+        # not present in db, create the entry
+        [ -z "$line" ] &&
+        {
+            local cons_successes=0
+            local last_success_tm=0
+            (( dt_try_count > 0 )) && (( dt_fail_count == 0 )) &&
+            {
+                cons_successes=1
+                last_success_tm="$current_tm"
+            }
+            echo "$word|$dt_try_count|$((const_tdb_big_nmuber - dt_fail_count ))|$cons_successes|$last_success_tm" >> "$conf_test_db_file"
+        } ||
+        # entry present in db, update the entry
+        {
+            local entry_try_count="$( <<<"$line" cut -d'|' -f$const_tdb_try_count)"
+            local entry_fail_count=$((const_tdb_big_nmuber - "$( <<<"$line" cut -d'|' -f$const_tdb_fail_count)"))
+            local entry_cons_success="$( <<<"$line" cut -d'|' -f$const_tdb_consecutive_successes)"
+            local entry_last_success_tm="$( <<<"$line" cut -d'|' -f$const_tdb_last_success_tm)"
+
+            local tm="$entry_last_success_tm"
+
+            (( dt_try_count > 0 )) && (( dt_fail_count == 0 )) &&
+            {
+                let entry_cons_success+=1
+                entry_last_success_tm=$current_tm
+            }
+
+            (( dt_fail_count > 0 )) &&
+            {
+                entry_cons_success=$((entry_cons_success - penalty ))
+                (( entry_cons_success < 0 )) && entry_cons_success=0
+            }
+
+            local new_entry="$word|$((entry_try_count + dt_try_count))|$((const_tdb_big_nmuber - entry_fail_count - dt_fail_count))|$entry_cons_success|$entry_last_success_tm"
+
+            sed -e "s/$line/$new_entry/" -i "$conf_test_db_file"
+        }
+    ) 9>"$conf_test_db_file_lock"
+}
+
+function tdb_reset_entry # word
+{
+    tdb_write_entry "$1" 0 0 0 0
+}
+
+# read (with a shared lock) the test file
+function tdb_read
+{
+    flock -s "$conf_test_db_file_lock" cat "$conf_test_db_file"
+}
+
+# output the list of words (one word per line) sorted by need-most-review to need least review.
+# (sort by least consecutive successes then last success timestamp then fail count, ...)
+function tdb_sort_words
+{
+    tdb_read | awk -F'|' "{ print \$$const_tdb_consecutive_successes,\$$const_tdb_last_success_tm,\$$const_tdb_fail_count,\$$const_tdb_word  }" OFS='|' | sort -n | cut -d'|' -f4
+}
+
+# sort the words by: last success timestamp (least recent first)
+function tdb_sort_by_last_success_time
+{
+    tdb_read | awk -F'|' "{ print \$$const_tdb_last_success_tm,\$$const_tdb_word  }" OFS='|' | sort -n | cut -d'|' -f2
+}
+
+# sort the words by: most failed first
+function tdb_sort_by_most_failed
+{
+    tdb_read | awk -F'|' "{ print \$$const_tdb_fail_count,\$$const_tdb_word  }" OFS='|' | sort -n | cut -d'|' -f2
+}
+
+# output the word list in random order
+function tdb_shuf_words
+{
+    tdb_read | shuf | cut -d'|' -f$const_tdb_word
+}
