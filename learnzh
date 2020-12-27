@@ -40,6 +40,10 @@ function die # (code, message...)
   exit $code
   exit 1
 }
+
+# dup stdout to another fd so the log functions works even inside pipes / ...
+exec 5>&1
+
 function diecv # (message...)
 {
   die 1 "$@"
@@ -51,13 +55,13 @@ function debug_log # (message...)
     (( VERBOSE )) && redir='&2'
     echo ' DD ' ${command_verb:-[core]}: "$@" |
     (
-        (( VERBOSE )) || tee -a "$gbl_opt_log" 1>/dev/null
-        (( VERBOSE )) && tee -a "$gbl_opt_log"
+        (( VERBOSE )) || cat >> "$gbl_opt_log"
+        (( VERBOSE )) && tee -a "$gbl_opt_log" 1>&5
     )
 }
 function log # (message...)
 {
-  echo ' -- ' ${command_verb:-[core]}: "$@" | tee -a "$gbl_opt_log"
+  echo ' -- ' ${command_verb:-[core]}: "$@" | tee -a "$gbl_opt_log" 1>&5
 }
 
 function __log_cmd
@@ -86,8 +90,8 @@ function tee_cmd # (cmd, args...)
 
   echo -e '\n------------------------------------------------------------------------------\n'"$@":'\n' 1>>"$gbl_opt_log" 2>&1
 
-  (( VERBOSE )) || "$@" > >(tee -a "$gbl_opt_log") 2>>"$gbl_opt_log"
-  (( VERBOSE )) && "$@" > >(tee -a "$gbl_opt_log") 2>&1
+  (( VERBOSE )) || "$@" > >(tee -a "$gbl_opt_log" 1>&5) 2>>"$gbl_opt_log"
+  (( VERBOSE )) && "$@" > >(tee -a "$gbl_opt_log" 1>&5) 2>&1
   cmd_exit_code=$?
   [ -z "$cmd_exit_code" ] && cmd_exit_code=512
   echo -e '\n-- exited with code:' $cmd_exit_code 1>>"$gbl_opt_log" 2>&1
