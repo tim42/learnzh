@@ -13,5 +13,6 @@ cmdcheck shuf
 cmdcheck wc
 cmdcheck sleep
 cmdcheck less
+cmdcheck dd
 cmdcheck opencc # necessary for simplified -> trad translation.
 

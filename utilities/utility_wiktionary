@@ -1,70 +1,34 @@
 # utilities related to scrapping wiktionary
 
 # utilities related to the test DB
-conf_wiktionary_cache="$conf_base_path/wcache" # dumb cache where only the last query is stored. Avoid repetitive queries. (this allows me to code dumb)
-conf_wiktionary_cache_lock="$conf_base_path/wcache.lock"
 
-conf_wiktionary_zh_cache="$conf_base_path/wzhcache" # dumb cache where only the last query is stored. Avoid repetitive queries. (this allows me to code dumb)
-conf_wiktionary_zh_cache_lock="$conf_base_path/wzhcache.lock"
+# NOTE: this utility uses a full fledged cache. (more like a leak if you ask me)
+conf_wiktionary_cache="$conf_base_path/wcache"
+conf_wiktionary_zh_cache="$conf_base_path/wzhcache"
 
 
 function wiktionary_curl_edit_page # word
 {
     local word="$1"
+    local content_url="https://en.wiktionary.org/w/index.php"
+    local content_xmlpath='//*[@id="wpTextbox1"]'
 
+    cache_get "$conf_wiktionary_cache" "$word" ||
     (
-        flock -x 9
-
-        local cache_word="$(head -n1 "$conf_wiktionary_cache")"
-
-        [ "$cache_word" = "$word" ] &&
-        {
-            # already in cache ! no need to re-query the stuff
-            debug_log "cache hit for wiktionary edit page for: $word"
-
-            tail -n+2 "$conf_wiktionary_cache"
-            return 0
-        }
-
-        debug_log "cache miss for wiktionary edit page for: $word (in cache: $cache_word)"
-
-        echo "$word" > "$conf_wiktionary_cache"
-        local content_url="https://en.wiktionary.org/w/index.php"
-        local content_xmlpath='//*[@id="wpTextbox1"]'
-        curl -G "$content_url" --data-urlencode 'action=edit' --data-urlencode "title=${word}" --silent | xmllint --html --nonet --recover --nowarning --xpath "$content_xmlpath" - 2>/dev/null | perl -pe 's/<.*?>//g' | tee -a "$conf_wiktionary_cache"
-
-    ) 9>"$conf_wiktionary_cache_lock"
+        curl -G "$content_url" --data-urlencode 'action=edit' --data-urlencode "title=${word}" --silent | xmllint --html --nonet --recover --nowarning --xpath "$content_xmlpath" - 2>/dev/null | perl -pe 's/<.*?>//g' | cache_put "$conf_wiktionary_cache" "$word"
+    )
 }
 
 function wiktionary_get_zhuyin # word
 {
     local word="$1"
 
+    local zhuyin_xmlpath='//*[@class="vsSwitcher"]/ul//*[@lang="zh-Bopo"]'
+    local zhuyin_base_url="https://en.wiktionary.org/wiki"
+    cache_get "$conf_wiktionary_zh_cache" "$word" ||
     (
-        flock -x 9
-
-        local cache_word="$(head -n1 "$conf_wiktionary_zh_cache")"
-
-        [ "$cache_word" = "$word" ] &&
-        {
-            # already in cache ! no need to re-query the stuff
-            debug_log "cache hit for wiktionary raw zhuyin for: $word"
-
-            tail -n+2 "$conf_wiktionary_zh_cache"
-            return 0
-        }
-
-        debug_log "cache miss for wiktionary raw zhuyin for: $word (in cache: $cache_word)"
-
-        local zhuyin_xmlpath='//*[@class="vsSwitcher"]/ul//*[@lang="zh-Bopo"]'
-        local zhuyin_base_url="https://en.wiktionary.org/wiki"
-        local content="$(curl "$zhuyin_base_url/${word}" --silent | xmllint --html --nonet --recover --nowarning --xpath "$zhuyin_xmlpath" - 2>/dev/null | perl -pe 's/<.*?>//g')"
-
-        echo "$content"
-        echo "$word" > "$conf_wiktionary_zh_cache"
-        echo "$content" >> "$conf_wiktionary_zh_cache"
-
-    ) 9>"$conf_wiktionary_zh_cache_lock"
+        curl "$zhuyin_base_url/${word}" --silent | xmllint --html --nonet --recover --nowarning --xpath "$zhuyin_xmlpath" - 2>/dev/null | perl -pe 's/<.*?>//g' | cache_put "$conf_wiktionary_zh_cache" "$word"
+    )
 }
 
 function wiktionary_get_word_data # word

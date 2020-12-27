@@ -75,10 +75,9 @@ function ext_cmd_make_db
     touch "$conf_test_db_file"
     touch "$conf_test_db_file_lock"
 
-    touch "$conf_wiktionary_cache"
-    touch "$conf_wiktionary_cache_lock"
-    touch "$conf_wiktionary_zh_cache"
-    touch "$conf_wiktionary_zh_cache_lock"
+    cache_init "$conf_wiktionary_cache"
+    cache_init "$conf_wiktionary_zh_cache"
+    cache_init "$conf_tts_cache"
 
     [ ! -f "$main_rc_file" ] && _create_conf_file "$main_rc_file"
     # make sure the source file exists:

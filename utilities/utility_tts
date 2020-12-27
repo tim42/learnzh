@@ -3,7 +3,6 @@
 ## It requires a specific file to be set that acts as an auth key for the services
 
 conf_tts_cache="$conf_base_path/ttscache" # dumb cache where only the last query is stored. Avoid repetitive queries. (this allows me to code dumb)
-conf_tts_cache_lock="$conf_base_path/ttscache.lock"
 
 # can be changed as necessary in the conf file. It defaults to the env variable, if set.
 conf_google_app_creds="$conf_base_path/gcloud-auth.json"
@@ -18,14 +17,6 @@ has gcloud && has jq && has play && has base64 && can_use_tts=true || can_use_tt
 
 $can_use_tts && debug_log "TTS Enabled"
 $can_use_tts || debug_log "TTS Disabled"
-
-# checksum tool:
-tts_checksum_tool="tr -d'\\n'" # not a checksum tool, but will work pre-existing requirements
-has md5sum && tts_checksum_tool=md5sum
-has sha1sum && tts_checksum_tool=sha1sum
-has sha512um && tts_checksum_tool=sha512um
-debug_log "using checksum tool for tts cache: $tts_checksum_tool"
-
 
 function is_tts_enabled
 {
@@ -60,24 +51,12 @@ function tts # lang, voice, text
 }
 EOF
 
-    local datakey="$(echo "$data" | $tts_checksum_tool)"
+    cache_get "$conf_tts_cache" "$data" ||
     (
-        local cachekey="$(head -n1 "$conf_tts_cache")"
-
-        [ "$datakey" = "$cachekey" ] &&
-        {
-            # already in cache ! no need to re-query the stuff
-            debug_log "cache hit for TTS data [key: $datakey]"
-            tail -n+2 "$conf_tts_cache"
-            return 0
-        }
-        debug_log "cache miss for TTS data [key: $datakey] vs in cache: [$cachekey]"
-
         local creds="$( GOOGLE_APPLICATION_CREDENTIALS="$conf_google_app_creds" gcloud auth application-default print-access-token)"
 
-        echo "$datakey" > "$conf_tts_cache"
-        curl -s -X POST -H "Authorization: Bearer $creds" "$@" -H 'Content-Type: application/json; charset=utf-8' -d "$data" 'https://texttospeech.googleapis.com/v1/text:synthesize' | jq -r '.audioContent' | base64 -d | tee -a "$conf_tts_cache"
-    ) 9>"$conf_tts_cache_lock"
+        curl -s -X POST -H "Authorization: Bearer $creds" "$@" -H 'Content-Type: application/json; charset=utf-8' -d "$data" 'https://texttospeech.googleapis.com/v1/text:synthesize' | jq -r '.audioContent' | base64 -d | cache_put "$conf_tts_cache" "$data"
+    )
 }
 
 function play_mp3
