@@ -452,7 +452,7 @@ function ex_learn_word # word
 
     do_clear
     echo
-    format_word_info "$word"
+    format_word_info "$word" true
     is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
     echo
     echo_notice "> Remember this word. When it's done, press enter. You'll be asked a few questions."
