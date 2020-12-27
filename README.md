@@ -77,3 +77,11 @@ Dunno.
 # DO I SPEAK / READ-WRITE / UNDERSTAND CHINESE
 
 Probably never / worse than a 5 years old / worse than a 2 years old.
+
+# DO I UNDER/OVERESTIMATE HOW YOUNG CHILDREN ARE?
+
+Yup.
+
+# HAS THIS README OVERSTAYED ITS WELCOME ?
+
+Absolutely.
