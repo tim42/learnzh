@@ -1,31 +1,53 @@
 
 
+
+function cmd_test_get_sort_mode
+{
+    declare -A fnc_array
+    fnc_array+=(
+        [tdb_shuf_words]=$cmd_opt_test_random_score
+        [tdb_sort_by_last_success_time]=$cmd_opt_test_least_recent_score
+        [tdb_sort_by_most_failed]=$cmd_opt_test_most_failed_score
+        [tdb_sort_words]=$cmd_opt_test_default_sort_score
+    )
+
+    local sum=0
+    local i=
+    for i in "${fnc_array[@]}"
+    do
+        let sum+=i
+    done
+
+    # rand + modulus are evil. Do not do that.
+    local value=$(( (RANDOM + $(date +%s)) % sum ))
+
+    sum=0
+    for i in "${!fnc_array[@]}"
+    do
+        local score=${fnc_array["$i"]}
+        sum=$((sum+score))
+        (( sum >= value )) &&
+        {
+            echo $i
+            return
+        }
+    done
+
+}
+
 function ext_cmd_test
 {
-    $cmd_opt_test_least_recent_first && $cmd_opt_test_most_failed_first && die 4 "Two or more xxx_first options are present at the same time."
-
     local word=
     local fnc=
-    local skip_rnd_choice=false
-
-    $cmd_opt_test_least_recent_first && skip_rnd_choice=true && fnc=tdb_sort_by_last_success_time
-    $cmd_opt_test_most_failed_first && skip_rnd_choice=true && fnc=tdb_sort_by_most_failed
 
     while true
     do
-        $skip_rnd_choice ||
-        {
-            (( (RANDOM % (cmd_opt_test_non_random_round + 1)) == 0 )) && fnc=tdb_shuf_words ||
-            {
-                local rnd_value=$(( (RANDOM + $(date +%s)) % (cmd_opt_test_default_sort_round + 2) ))
-                ((rnd_value == 0)) && fnc=tdb_sort_by_last_success_time
-                ((rnd_value == 1)) && fnc=tdb_sort_by_most_failed
-                ((rnd_value >= 2)) && fnc=tdb_sort_words
-            }
-        }
+        fnc=$(cmd_test_get_sort_mode)
+        debug_log "sort mode: $fnc"
 
         for word in $($fnc | head -n $cmd_opt_test_round_size | shuf)
         do
+            debug_log "word: $word"
             ex_test_word "$word"
         done
     done

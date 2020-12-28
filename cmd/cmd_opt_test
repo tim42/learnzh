@@ -1,25 +1,21 @@
 
 
+
+
 cmd_opt_test_round_size=5
 help_cmd_opt_test_round_size="Size of a round before re-choosing new random words"
 
-cmd_opt_test_non_random_round=4
-help_cmd_opt_test_non_random_round="0: fully random (no sorting of word from failures), 1: there's a 50% chance to have a non random run (1 out of 2 runs), 2: there's a 66% chance to have a non-random round (2 out of 3 runs), and so forth and so on."
+cmd_opt_test_random_score=12
+help_cmd_opt_test_random_score="Proportional score of the 'random' sort mode"
 
-cmd_opt_test_default_sort_round=3
-help_cmd_opt_test_default_sort_round="0: no default sort rounds, 1: 50% of the runs default sorted runs, 2: 66% of the runs are default sorted runs, ..."
+cmd_opt_test_least_recent_score=13
+help_cmd_opt_test_random_score="Proportional score of the 'least recent' sort mode"
 
-cmd_opt_test_random_rounds=true
-help_cmd_opt_test_has_random_rounds="Whether or not random rounds can occur (see the non-random-round option to change the occurence)"
-boolean_cmd_opt_test_random_rounds= # the var is a boolean
+cmd_opt_test_most_failed_score=1
+help_cmd_opt_test_random_score="Proportional score of the 'most failed' sort mode"
 
-cmd_opt_test_least_recent_first=false
-help_cmd_opt_test_least_recent_first="Force the order to be the words with the least recent success first. It is an error to have multiple xxx_first activated at the same time."
-boolean_cmd_opt_test_least_recent_first= # the var is a boolean
-
-cmd_opt_test_most_failed_first=false
-help_cmd_opt_test_most_failed_first="Force the order to be the words with the most failures. It is an error to have multiple xxx_first activated at the same time."
-boolean_cmd_opt_test_most_failed_first= # the var is a boolean
+cmd_opt_test_default_sort_score=30
+help_cmd_opt_test_random_score="Proportional score of the default sort mode"
 
 
 #usage_ext_cmd_test=
