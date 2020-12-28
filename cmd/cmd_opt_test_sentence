@@ -1,4 +1,6 @@
 
+cmd_opt_test_sentence_round_size=5
+help_cmd_opt_test_sentence_round_size="Size of a round before re-choosing new random words"
 
-usage_ext_cmd_test_sentence="[word]"
+#usage_ext_cmd_test_sentence=""
 help_ext_cmd_test_sentence="Run the test mode for sentences"

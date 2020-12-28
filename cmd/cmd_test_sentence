@@ -7,11 +7,13 @@ function ext_cmd_test_sentence
     local fnc=tdb_shuf_words
     while true
     do
-        for word in $($fnc)
+        debug_log "<new round>"
+        for word in $($fnc | head -n$cmd_opt_test_sentence_round_size)
         do
             ex_learn_sentence__valid "$word" || { echo -n '.' ; continue ; }
 
-            # ex_test_word "$word"
+            debug_log "word: $word"
+
             ex_learn_sentence "$word"
 
             echo 'press enter to continue'
