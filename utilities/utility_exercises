@@ -520,10 +520,61 @@ function ex_learn_word # word
 
 
 
+conf_ex_test_descr_for_word_score=25
+help_conf_ex_test_descr_for_word_score="Proportional score of the 'descr for word' exercise"
+
+conf_ex_test_match_descr_score=12
+help_conf_ex_test_match_descr_score="Proportional score of the 'match descr' exercise"
+
+conf_ex_test_zhuyin_score=5
+help_conf_ex_test_zhuyin_score="Proportional score of the 'zhuyin' exercise"
+
+conf_ex_test_word_for_descr_score=23
+help_conf_ex_test_word_for_descr_score="Proportional score of the 'word for descr' exercise"
+
+
+function ex_get_random_exercise
+{
+    declare -A fnc_array
+    fnc_array+=(
+        [ex_enter_descr_for_word]=$conf_ex_test_descr_for_word_score
+        [ex_match_descr]=$conf_ex_test_match_descr_score
+        [ex_zhuyin]=$conf_ex_test_zhuyin_score
+        [ex_enter_character_for_descr]=$conf_ex_test_word_for_descr_score
+    )
+
+    local sum=0
+    local i=
+    for i in "${fnc_array[@]}"
+    do
+        let sum+=i
+    done
+
+    # rand + modulus are evil. Do not do that.
+    local value=$(( (RANDOM + $(date +%s)) % sum ))
+
+    sum=0
+    for i in "${!fnc_array[@]}"
+    do
+        local score=${fnc_array["$i"]}
+        sum=$((sum+score))
+        (( sum >= value )) &&
+        {
+            echo $i
+            return
+        }
+    done
+
+}
+
+conf_ex_default_failure_cost=3
+help_conf_ex_default_failure_cost="How much a failure remove points. Some exercises may override this."
+
 function ex_test_word # word
 {
+    local word="$1"
+
     # data:
-    local exercises_array=( ex_enter_descr_for_word ex_match_descr ex_zhuyin ex_enter_character_for_descr ex_enter_character_for_descr ex_enter_descr_for_word )
     declare -A exercises_has_success
     declare -A exercises_is_valid
     exercises_has_success+=(
@@ -534,6 +585,7 @@ function ex_test_word # word
         [ex_learn_sentence]=true
     )
     exercises_is_valid+=(
+        [_BAD_]=false
         [ex_match_descr]=true
         [ex_zhuyin]=true
         [ex_enter_character_for_descr]=true
@@ -541,26 +593,27 @@ function ex_test_word # word
         [ex_learn_sentence]=ex_learn_sentence__valid
     )
 
-    local word="$1"
-
     # select a valid exercise for the word:
-    local function_index=$(( RANDOM % ${#exercises_array[@]} ))
-    local function=${exercises_array["$function_index"]}
+    local function="_BAD_"
     while ! ${exercises_is_valid["$function"]} "$word"
     do
-        function_index=$(( RANDOM % ${#exercises_array[@]} ))
-        function=${exercises_array["$function_index"]}
+        function=$(ex_get_random_exercise)
     done
+    debug_log "exercise function: $function"
 
     # do the exercise:
-    ex_failure_score=3
+    ex_failure_score=$conf_ex_default_failure_cost
     if $function "$word"
     then
+        debug_log "exercise: success"
+
         # if there's the possibility of a success, update the DB
         ${exercises_has_success["$function"]} && echo_success "It's a success !"
         ${exercises_has_success["$function"]} || echo_notice "Success does not exist for this test"
         ${exercises_has_success["$function"]} && tdb_update_entry $word 1 0 $failure_score
     else
+        debug_log "exercise: failure"
+
         echo_error "Failure cost: $ex_failure_score"
         tdb_update_entry $word 1 1 $ex_failure_score
     fi
