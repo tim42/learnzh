@@ -12,6 +12,7 @@ function ext_cmd_test_sentence
         do
             ex_learn_sentence__valid "$word" || { echo -n '.' ; continue ; }
 
+            echo "<found some sentences, loading stuf...>"
             debug_log "word: $word"
 
             ex_learn_sentence "$word"
