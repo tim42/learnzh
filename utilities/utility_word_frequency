@@ -22,5 +22,5 @@ function word_frequency_translate_entry # entry
 
 function word_frequency_get_random_word # ( except-this-word )
 {
-    word_frequency_translate_entry "$(head -n700 "$conf_word_freq_list_file" | grep -Ev "^$1\\|" | shuf | head -n1)"
+    word_frequency_translate_entry "$(head -n700 "$conf_word_freq_list_file" | grep -Ev "^$1\$" | shuf | head -n1)"
 }
