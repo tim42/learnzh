@@ -39,7 +39,7 @@ function cache_init # cache_base_file
 function cache_clear # cache_base_file
 {
     local cache="$1"
-    debug_log "cache clear: [ $cache ]"
+    debug_log "cache clear: [$cache]"
     : >"$cache$const_cache_keys_file_suffix"
     : >"$cache$const_cache_data_file_suffix"
     : >"$cache$const_cache_lock_file_suffix"
@@ -65,7 +65,7 @@ function cache_get # cache_base_file, key
         local start_offset="$( <<<"$entry" cut -d- -f2)"
         local data_size="$( <<<"$entry" cut -d- -f3)"
 
-        debug_log "cache hit : [$cache : ${key:0:6}..] data-size: $data_size"
+        debug_log "cache hit: [$cache : ${key:0:6}..]: data-size: $data_size"
 
         # fast cache read + uncompress:
         dd skip=$start_offset count=$data_size if="$cache_data" bs=1 status=none | $conf_cache_compressor -d
@@ -102,7 +102,7 @@ function cache_put # cache_base_file, key
         flock -x 9 # exclusive lock.
 
         # Debug. Avoid bad stuff from happening in case someone is doing bad stuff
-        [ ! -z "$( grep -F "$key" "$cache_keys")" ] && { debug_log "cache_put: [$cache] already containts an entry for [${key:0:6}..]. This is bad." ; cat ; return 0 ; }
+        [ ! -z "$( grep -F "$key" "$cache_keys")" ] && { debug_log "cache put: [$cache]: already contains an entry for [${key:0:6}..]. This requires investigation." ; cat ; return 0 ; }
 
         local cache_size="$(du -b "$cache_data" | cut -f1)"
 
@@ -116,7 +116,9 @@ function cache_put # cache_base_file, key
         # (so we never end-up with an invalid key file. we may waste disk space but not have a corrupted stuff)
         echo "$key$cache_size-$data_size" >> "$cache_keys"
 
-        debug_log "cache put : [$cache : ${key:0:6}..] data-size: $data_size"
+        debug_log "cache put: [$cache : ${key:0:6}..]: data-size: $data_size"
+        debug_log "cache put: [$cache] cache-size: $((new_cache_size/1024))kib for $(wc -l <"$cache_keys") entries"
+
     ) 9>"$cache$const_cache_lock_file_suffix"
 }
 
@@ -137,7 +139,7 @@ function cache_trunc # cache_base_file, [max_entry_count:1000], [margin:250]
 
         entries_to_rm=$((key_count - max_entry_count))
 
-        debug_log "Truncating cache $cache [ removing $entries_to_rm entries... ]"
+        debug_log "cache trunc: [$cache]: removing $entries_to_rm entries..."
 
         # trim the keys: (tail -n+[...] is 1 indexed hence the +1)
         tail -n+$((entries_to_rm+1)) "$cache_keys" > "$cache_keys.tmp"
@@ -166,7 +168,8 @@ function cache_trunc # cache_base_file, [max_entry_count:1000], [margin:250]
         rm -f "$cache_keys.tmp"
         mv -f "$cache_keys.tmp2" "$cache_keys"
         mv -f "$cache_data.tmp" "$cache_data"
-        debug_log "Truncated  cache $cache [ freed $data_shift bytes ]"
+        debug_log "cache trunc: [$cache]: freed $data_shift bytes"
+        debug_log "cache trunc: [$cache] cache-size: $((new_cache_size/1024))kib for $(wc -l <"$cache_keys") entries"
     ) 9>"$cache$const_cache_lock_file_suffix"
 }
 
