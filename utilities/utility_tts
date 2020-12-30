@@ -55,7 +55,7 @@ EOF
     (
         local creds="$( GOOGLE_APPLICATION_CREDENTIALS="$conf_google_app_creds" gcloud auth application-default print-access-token)"
 
-        curl -s -X POST -H "Authorization: Bearer $creds" "$@" -H 'Content-Type: application/json; charset=utf-8' -d "$data" 'https://texttospeech.googleapis.com/v1/text:synthesize' | jq -r '.audioContent' | base64 -d | cache_put "$conf_tts_cache" "$data"
+        curl -s -X POST -H "Authorization: Bearer $creds" -H 'Content-Type: application/json; charset=utf-8' -d "$data" 'https://texttospeech.googleapis.com/v1/text:synthesize' | jq -r '.audioContent' | base64 -d | cache_put "$conf_tts_cache" "$data"
     )
 }
 
