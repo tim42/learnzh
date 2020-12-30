@@ -103,18 +103,20 @@ function ex_match_descr # word [description-count]
         echo
 
         local is_valid=$(( (RANDOM + $(date +%s) ) % 4))
-        if (( is_valid == 0 )) && [ ! -z "$matching_descriptions" ]
+        if (( is_valid == 0 )) && (( matching_description_count >= random_description_count ))
         then
             matches=y
             echo_entry "$( <<<"$matching_descriptions" head -n $random_description_count )"
             matching_descriptions="$( <<<"$matching_descriptions" tail -n +$((random_description_count + 1)))"
+            let matching_description_count-=random_description_count
         else
             matches=n
             while true
             do
                 rnd_word="$(word_frequency_get_random_word "$word")"
                 local random_descriptions="$(db_get_descriptions "$rnd_word" | ex_filter_description "$word" | ex_filter_description "$rnd_word" | shuf| head -n$random_description_count)"
-                [ -z "$random_descriptions" ] && continue
+                local this_iteration_count=$(wc -l <<<"$random_descriptions")
+                (( this_iteration_count != random_description_count )) && continue
                 echo_entry "$random_descriptions"
                 break
             done
@@ -399,6 +401,7 @@ function ex_learn_sentence # word
     done
 
     ex_learn_sentence_tts "$src_tts_sentence"
+    debug_log "sentence: $src_tts_sentence"
 
     local line=
     local fail_count=0
@@ -413,7 +416,7 @@ function ex_learn_sentence # word
 
         local trline="$( <<<"$line" sed -e 's/她|它/他/g')"
 
-        ( [ "$trline" = "$src_tts_sentence" ] || [ "$trline。" = "$src_tts_sentence" ] || [ "$trline" = "$src_tts_sentence。" ] ) &&
+        [ "$(sed -e 's/[[:punct:]]//g' <<<$trline)" = "$(sed -e 's/[[:punct:]]//g' <<<$src_tts_sentence)" ] &&
         {
             (( fail_count >= const_success_tries )) && { ex_failure_score=0 ; break ; }
             success=true
