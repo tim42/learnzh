@@ -65,34 +65,9 @@ EOF
     done
 }
 
-function ext_cmd_make_db
+function _reset_word_db # raw_dict_file
 {
-    local raw_dict_file="$conf_base_path/cedict_1_0_ts_utf-8_mdbg.txt"
-
-    # make sure stuff exists, even if empty:
-    mkdir -p "$conf_base_path"
-
-    touch "$conf_test_db_file"
-    touch "$conf_test_db_file_lock"
-
-    cache_init "$conf_wiktionary_cache"
-    cache_init "$conf_wiktionary_zh_cache"
-    cache_init "$conf_tts_cache"
-
-    [ ! -f "$main_rc_file" ] && _create_conf_file "$main_rc_file"
-    # make sure the source file exists:
-    if [ ! -e "$raw_dict_file" ]
-    then
-        log "Downloading the raw dict file as it does not exist..."
-        curl -s https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz | gunzip -c > "$raw_dict_file"
-    fi
-
-    # download and strip the word frequency file if it does not exists:
-    if [ ! -e "$conf_word_freq_list_file" ]
-    then
-        log "Downloading the word frequency file as it does not exist..."
-        curl -s "https://www.ugent.be/pp/experimentele-psychologie/en/research/documents/subtlexch/subtlexch131210.zip" | gunzip -c | tail -n+2 | cut -d'	' -f1 > "$conf_word_freq_list_file"
-    fi
+    local raw_dict_file="$1"
 
     # clear the db file & reformat the raw db file:
     local line=
@@ -107,7 +82,111 @@ function ext_cmd_make_db
         cut -d'/' -f2- <<<"${line:0:-2}" | tr '/' '\n' | awk '$0="'"$word||"'"$0'
         let ++i
     done > "$conf_db_file"
-    log
+    echo
+}
+
+function _reset_sentence_db # raw_sentence_file
+{
+    # NOTE: the source file has some badly-space-separated pinyin and will sometimes produce incorrect sentences.
+    local raw_sentence_file="$1"
+
+    # this is a words splitter from pinyin. It is super slow, but necessary.
+
+    # here are the initials and the finals of any pinyin word. We use those to build a regex that would match any phoneme.
+    # (building the regex by hand would be too error prone and I dislike debugging regex
+    local pinyin_initials=(zh ch sh b p m f d t n l g k h j q x r z c s y w)
+    local pinyin_finals=(iang iong uang  ang  eng  ing iao ian  ong  uai uan   an ao ai   en er ei  ia iu ie in  ou un ua uo ue ui  a e i o u v )
+
+    # build the regex.
+    # initials are not required, but finals are.
+    # (some finals can form words. not all of them, but we assume the input data is correct so having a filter matching incorrect data is not a problem).
+    # building the regex is slower than having is precomputed, but compared to the slowness of the rest of this code _it's fine_.
+    local initials_regex=
+    local it=
+    for it in "${pinyin_initials[@]}"
+    do
+        initials_regex="$initials_regex|$it"
+    done
+    initials_regex="(${initials_regex:1})"
+
+    local finals_regex=
+    for it in "${pinyin_finals[@]}"
+    do
+        finals_regex="$finals_regex|$it"
+    done
+    finals_regex="(${finals_regex:1})"
+
+    # the regex !
+    regex="${initials_regex}?${finals_regex}"
+
+    local line=
+    local line_count=$(grep -vE '^#' <"$raw_sentence_file" | wc -l)
+    local i=0
+
+    log "Resetting the sentence (source file contains $line_count entries)"
+
+    # fast way: (faster 'cause single invocation + single compilation of regexes)
+    # The first <(...) do:
+    #  - read the pinyin section of the file
+    #  - remove any accent (ü -> u), remove "'", convert to lower case
+    #  - in the perl:
+    #    - open the source file, read a line, remove punctuation, spaces, digit and non-chinese words
+    #    - for each pinyin character, replace it with the corresponding chinese character from the source file. This gives the list of words, space separated.
+    paste > "$conf_sentence_db_file" -d'||\n' \
+        <(cut -d'	' -f2 < "$raw_sentence_file" | iconv -f utf8 -t ascii//TRANSLIT | tr "'" ' ' | tr '[:upper:]' '[:lower:]' |
+            perl -e "use open ':std', ':encoding(UTF-8)';use utf8;" \
+                 -e "BEGIN{open(RAW, '<', '$raw_sentence_file') or die \$!;}" \
+                 -p \
+                 -e 'my $line = <RAW>;'\
+                 -e '$line=~s/[[:punct:]]|[[:space:]]|[0-9a-zA-Z]|[｀]//g;'\
+                 -e 'my $cont=0;' \
+                 -e "s/${regex}/substr(\$line,\$cont++,1)/eg;") \
+        <(cut -d'	' -f1 < "$raw_sentence_file") \
+        <(cut -d'	' -f3 < "$raw_sentence_file")
+}
+
+function ext_cmd_make_db
+{
+    local raw_dict_file="$conf_base_path/cedict_1_0_ts_utf-8_mdbg.txt"
+    local raw_sentence_file="$conf_base_path/sentence_raw_data.txt"
+
+    # make sure stuff exists, even if empty:
+    mkdir -p "$conf_base_path"
+
+    # touch, not remove (so... you don't end-up paying a high price a mistake)
+    touch "$conf_test_db_file"
+    touch "$conf_test_db_file_lock"
+
+    cache_init "$conf_wiktionary_cache"
+    cache_init "$conf_wiktionary_zh_cache"
+    cache_init "$conf_tts_cache"
+
+    [ ! -f "$main_rc_file" ] && _create_conf_file "$main_rc_file"
+    # make sure the source files exist:
+    if [ ! -e "$raw_dict_file" ]
+    then
+        log "Downloading the raw dict file as it does not exist..."
+        curl -s https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz | gunzip -c > "$raw_dict_file"
+    fi
+    if [ ! -e "$raw_sentence_file" ]
+    then
+        log "Downloading the raw sentence list file as it does not exist..."
+        # super shady link, pointing to a forum resource and all...
+        # Skip the first line as it is not content
+        curl -s https://www.plecoforums.com/download/18-896-hsk-sentences-ascending-complexity-txt.2413/ | tail -n+2 > "$raw_sentence_file"
+    fi
+
+    # download and strip the word frequency file if it does not exists:
+    if [ ! -e "$conf_word_freq_list_file" ]
+    then
+        log "Downloading the word frequency file as it does not exist..."
+        curl -s "https://www.ugent.be/pp/experimentele-psychologie/en/research/documents/subtlexch/subtlexch131210.zip" | gunzip -c | tail -n+2 | cut -d'	' -f1 > "$conf_word_freq_list_file"
+    fi
+
+    # clear the db file & reformat the raw db file:
+    _reset_sentence_db "$raw_sentence_file"
+    $cmd_opt_make_db_skip_word_db || _reset_word_db "$raw_dict_file"
+
     log done.
 }
 

@@ -3,3 +3,6 @@
 #usage_ext_cmd_make_db=""
 help_ext_cmd_make_db="Force the reset of the word db from the raw dict file"
 
+cmd_opt_make_db_skip_word_db=false
+help_cmd_opt_make_db_skip_word_db="Skip the generation of the word DB (can be slow / not requireed if already done)"
+boolean_cmd_opt_make_db_skip_word_db=

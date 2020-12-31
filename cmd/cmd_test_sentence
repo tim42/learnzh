@@ -1,26 +1,37 @@
 
 
+function _log_sentence_count
+{
+    local line=
+    local i=0
+    while read -r line
+    do
+        let ++i
+        echo -ne " --  [found $i sentences...]\r" 1>&2
+    done
+}
+
 function ext_cmd_test_sentence
 {
     is_tts_enabled || die 3 'TTS support is required for this to work'
 
-    local fnc=tdb_shuf_words
+    log "loading sentences, it may take time..."
+    local matching_sentences="$(st_read_file 1 500 | st_get_sentences 65 | tee >(_log_sentence_count))"
+    log "found $(wc -l <<<"$matching_sentences") compatible sentences"
+
     while true
     do
-        debug_log "<new round>"
-        for word in $($fnc | head -n$cmd_opt_test_sentence_round_size)
+        local sentence=
+        while read -u4 -r sentence
         do
-            ex_learn_sentence__valid "$word" || { echo -n '.' ; continue ; }
+            debug_log "sentence: $sentence"
 
-            echo "<found some sentences, loading stuf...>"
-            debug_log "word: $word"
-
-            ex_learn_sentence "$word"
+            ex_learn_sentence "$sentence"
 
             echo 'press enter to continue'
             local _scratch=
             read -r _scratch
-        done
+        done 4< <(shuf <<<"$matching_sentences" | head -n"$cmd_opt_test_sentence_round_size")
     done
 }
 
