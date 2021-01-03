@@ -9,6 +9,7 @@ I got tired of stuff for learning Chinese online that would not provide the foll
  - support for zhuyin input
  - focus on both words and sentences in context
  - made to build vocabulary
+ - allow you to learn the characters. I mean, there are a ton of similar-looking characters, but most existing stuff don't bother making you _understand_ the characters.
  - would not be exploitable by simply guessing stuff unrelated to the word / ... I want the easy solution to be learning the word, not find how to exploit how the exercise works.
  - where I can just do one quick round without any issues, without loosing progress
  - fair. I mistype a ton, and I want to be able to correct myself if I made a mistake before being presented with the result
@@ -43,7 +44,7 @@ The name of this project is awful and I don't feel bad.
 # WHAT ARE THE NICE FEATURES
 
 The setup is automated.
-To setup everything, simply run `./learnzh make_db` and a after a few minutes, everything will be setup and ready to go !
+To setup everything, simply run `./learnzh make_db` and a after a few seconds, everything will be setup and ready to go !
 
 The code is somewhat clean.
 It's a mess (which is ironic to have right after saying that the code was clean), I use very bad shell constructs, but there are files for the different parts of the tool.
@@ -61,7 +62,7 @@ The core is based on prig. Prig is cool. This means:
 
 Currently:
  - Learning phase based on an occurrence list from movie subtitles (`learnzh learn`) and forced learning phase for a word (`learnzh learn_word 東西`)
- - Sentences related to the existing vocabulary you've learned (shamelessly scrapped from wiktionary). Words that the user may not know are allowed, up to a limit (configurable). This is mostly _'you hear a sentence that contains words you know, type it back'_, with the english translation (as provided by... wiktionary) if the user failed twice. At the end, a break-up of the sentence is provided with a definition for each words.
+ - Sentences related to the existing vocabulary you've learned. Words that the user may not know are allowed, up to a limit (configurable). This is mostly _'you hear a sentence that contains words you know, type it back'_, with the english translation if the user failed twice. At the end, a break-up of the sentence is provided with a definition for each words.
  - A few exercises are implemented (most of them to build-up your knowledge of the words, chinese -> english, english -> chinese, chinese -> zhuyin and some variations)
  - Word definition lookup, and matching definition search (like a reverse search? But it's not really polished. At all).
  - For the `test` mode (the default mode really), a few sorting modes are available (and configurable), and the system alternate between them (configurable) to provide the best coverage
