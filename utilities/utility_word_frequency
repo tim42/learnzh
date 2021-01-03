@@ -1,7 +1,7 @@
 
 conf_word_freq_list_file="$conf_base_path/SUBTLEX-CH-WF.strip.utf8"
 
-# the patch has a simple '|simplified|trad' format. If it contains an entry, it will take precedence over what opencc provides
+help_conf_word_freq_list_patch_file="the patch has a simple '|simplified|trad' format. If it contains an entry, it will take precedence over what opencc provides"
 conf_word_freq_list_patch_file="./data/word-frequency-patch"
 
 # translate a word frenquency entry in a correct word

@@ -69,11 +69,23 @@ function _reset_word_db # raw_dict_file
 {
     local raw_dict_file="$1"
 
+    local line_count=$(grep -vE '^#' <"$raw_dict_file" | wc -l)
+    log "Resetting the DB (source file contains $line_count entries)"
+
+    # the destination format is: |trad-word|zhuyin|/(descriptions/)+
+    # but to speed things up we go to the intermediate trad-word|/(descriptions/)+
+    # and add a slash at the start of each lines
+    (
+        paste -d '|||\n' \
+           <(grep -vE '^#' "$raw_dict_file" | cut -d' ' -f1) \
+           <(grep -vE '^#' "$raw_dict_file" | perl -p -e 's/.*?\[(.*?)\].*/\1/g' | tr '[:upper:]' '[:lower:]' | pinyin_to_zhuyin ) \
+           <(grep -vE '^#' "$raw_dict_file" | perl -p -e 's@.*?[/](.*)[/]@/$1/@g') #\
+    ) | sed -e 's/^/|/g'  >"$conf_db_file"
+
+    return
     # clear the db file & reformat the raw db file:
     local line=
-    local line_count=$(grep -vE '^#' <"$raw_dict_file" | wc -l)
     local i=0
-    log "Resetting the DB (source file contains $line_count entries)"
     grep -vE '^#' <"$raw_dict_file" | while read -r line
     do
         (( i % 100 == 0 )) && echo -ne "$i / $line_count entries ($(( i * 100 / (line_count+1) )) %)  \r" 1>&2
@@ -81,7 +93,7 @@ function _reset_word_db # raw_dict_file
         local word="$(cut -d' ' -f1 <<<"$line")"
         cut -d'/' -f2- <<<"${line:0:-2}" | tr '/' '\n' | awk '$0="'"$word||"'"$0'
         let ++i
-    done > "$conf_db_file"
+    done >"$conf_db_file"
     echo
 }
 
@@ -132,7 +144,7 @@ function _reset_sentence_db # raw_sentence_file
     #  - in the perl:
     #    - open the source file, read a line, remove punctuation, spaces, digit and non-chinese words
     #    - for each pinyin character, replace it with the corresponding chinese character from the source file. This gives the list of words, space separated.
-    paste > "$conf_sentence_db_file" -d'||\n' \
+    paste >"$conf_sentence_db_file" -d'||\n' \
         <(cut -d'	' -f2 < "$raw_sentence_file" | iconv -f utf8 -t ascii//TRANSLIT | tr "'" ' ' | tr '[:upper:]' '[:lower:]' |
             perl -e "use open ':std', ':encoding(UTF-8)';use utf8;" \
                  -e "BEGIN{open(RAW, '<', '$raw_sentence_file') or die \$!;}" \
@@ -173,7 +185,7 @@ function ext_cmd_make_db
         log "Downloading the raw sentence list file as it does not exist..."
         # super shady link, pointing to a forum resource and all...
         # Skip the first line as it is not content
-        curl -s https://www.plecoforums.com/download/18-896-hsk-sentences-ascending-complexity-txt.2413/ | tail -n+2 > "$raw_sentence_file"
+        curl -s https://www.plecoforums.com/download/18-896-hsk-sentences-ascending-complexity-txt.2413/ | tail -n+2 | opencc -c s2tw.json > "$raw_sentence_file"
     fi
 
     # download and strip the word frequency file if it does not exists:
@@ -185,7 +197,7 @@ function ext_cmd_make_db
 
     # clear the db file & reformat the raw db file:
     _reset_sentence_db "$raw_sentence_file"
-    $cmd_opt_make_db_skip_word_db || _reset_word_db "$raw_dict_file"
+    _reset_word_db "$raw_dict_file"
 
     log done.
 }

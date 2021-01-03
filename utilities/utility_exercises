@@ -2,64 +2,13 @@
 
 
 # exercises:
+help_conf_ex_description_filter_file="Entries (one per line, no regex) contained in this file will prevent the line to be used in exercise descriptions"
+conf_ex_description_filter_file="./data/ex_description_filter"
 
 
 function ex_filter_description # word
 {
-    grep -vF "$word" | grep -vi "surname" | grep -viF "(in Classical Chinese)" | grep -viF 'also pr. ' | grep -viF 'Taiwan pr.' | grep -viF 'commonly pr. ' | grep -viF 'variant of ' | grep -viF '(archaic)' | grep -viF '(literary)' | grep -viF '(dialect)' | perl -pe 's/\[.*?\]/\[...\]/g'
-}
-
-# return 0 for success or 1 if it fails
-function ex_hard_match_descr # word
-{
-    local word="$1"
-
-    local zhuyin="$(db_get_zhuyin "$word")"
-    local matching_descriptions="$(db_get_descriptions "$word" | ex_filter_description "$word" | shuf | head -n $((RANDOM % 4 + 2)))"
-    local matching_description_count=$(wc -l <<<"$description")
-    local random_description_count=$(( matching_description_count * 4 + (RANDOM % 5) ))
-
-    local random_descriptions="$(shuf "$conf_db_file" | head -n$random_description_count | cut -d'|' -f$const_db_descr)"
-
-    local descriptions="$( (echo "$matching_descriptions";echo -n "$random_descriptions" ) | unsorted_uniq | shuf | grep -Fv 'surname')"
-
-    do_clear
-
-    echo_entry "Word: $word [[ $zhuyin ]]"
-    echo_notice "Excercise: Select whether or not the description matches the word."
-    echo_notice "NOTE: there will $(wc -l <<<"$descriptions") rounds."
-
-    is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
-
-    sleep 0.5
-
-    local line=
-    local has_fail=false
-    local matches=n
-    local answer=
-    while read -u3 -r line
-    do
-        echo
-        answer=
-        echo_entry "$line"
-        while [ "$answer" != 'y' ] && [  "$answer" != 'n' ]
-        do
-            read -p "Does this matches '$word' ? [y/n]: " -r answer
-        done
-
-        matches=n
-        grep -F "$line" <<<"$matching_descriptions" 1>&/dev/null && matches=y
-
-        [ "$matches" = "$answer" ] && echo_success "Great !" ||
-        {
-            echo_error "Incorrect answer."
-            has_fail=true
-        }
-
-    done 3<<<"$descriptions"
-
-    # return the success / failure status:
-    ! $has_fail
+    grep -vF "$word" | grep -viF -f "$conf_ex_description_filter_file" | perl -pe 's/\[.*?\]/\[...\]/g'
 }
 
 function ex_match_descr # word [description-count]
@@ -67,17 +16,38 @@ function ex_match_descr # word [description-count]
     local word="$1"
     local max_descriptions=${2:-4}
 
-    local zhuyin="$(db_get_zhuyin "$word")"
-    local matching_descriptions="$(db_get_descriptions "$word" | ex_filter_description "$word" | shuf)"
-    local matching_description_count=$(wc -l <<<"$matching_descriptions")
+    local db_entries="$(db_get_word_info "$word")"
+
+    local matching_description_count=0
+    local i=0
+    while (( matching_description_count == 0 ))
+    do
+        local random_db_entry="$( shuf <<<"$db_entries" | head -n1 )"
+
+        local zhuyin="$(db_get_zhuyin_from_input <<<"$random_db_entry" | sed -e 's/#/ , /g')"
+        local matching_descriptions="$(db_get_descriptions_from_input <<<"$random_db_entry" | ex_filter_description "$word" | shuf | grep -Fv 'CL:')"
+        matching_description_count=$(trim <<<"$matching_descriptions" | wc -l)
+
+        # failsafe to avoid iterating over and over
+        (( i > 20 )) &&
+        {
+            debug_log "word $word does not have enough matching description to run the exercise. Aborting."
+            echo_error "Cannot run the exercise for word $word. Aborting with a failure cost of 0."
+            ex_failure_score=0
+            return 1
+        }
+        let ++i
+    done
+    # the full description of the word, so as to avoid any possible confusionL
+    local descriptions="$(db_get_descriptions "$word" | ex_filter_description "$word")"
 
     local round_count=$((RANDOM % 4 + 7))
     local total_descr_count="$(wc -l "$conf_db_file" | cut -d' ' -f1)"
     do_clear
 
-    echo_entry "Word: $word [[ $zhuyin ]]"
     echo_notice "Excercise: Select whether or not the description matches the word."
     echo_notice "NOTE: there will $round_count rounds. [total number of descr: $total_descr_count]"
+    echo_notice "Word: $(format_word_header "$word" "$zhuyin")"
 
     is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
 
@@ -87,7 +57,8 @@ function ex_match_descr # word [description-count]
     local has_fail=false
     local matches=n
     local answer=
-    local i=0
+    i=0
+    local rnd_word=
 
     # avoid a bad case of a single line description
     local random_description_count=$max_descriptions
@@ -106,33 +77,54 @@ function ex_match_descr # word [description-count]
         if (( is_valid == 0 )) && (( matching_description_count >= random_description_count ))
         then
             matches=y
+            # random sleep so that I cannot distinguish between real and not real selection
+            usleep $(( (RANDOM % 200) * 1000))
             echo_entry "$( <<<"$matching_descriptions" head -n $random_description_count )"
             matching_descriptions="$( <<<"$matching_descriptions" tail -n +$((random_description_count + 1)))"
             let matching_description_count-=random_description_count
+
         else
             matches=n
             while true
             do
                 rnd_word="$(word_frequency_get_random_word "$word")"
-                local random_descriptions="$(db_get_descriptions "$rnd_word" | ex_filter_description "$word" | ex_filter_description "$rnd_word" | shuf| head -n$random_description_count)"
+                local random_descriptions="$(db_get_descriptions "$rnd_word" | ex_filter_description "$word" | ex_filter_description "$rnd_word" | grep -Fv 'CL:' | shuf | head -n$random_description_count)"
                 local this_iteration_count=$(wc -l <<<"$random_descriptions")
+
+                # skip invalid random descriptions
                 (( this_iteration_count != random_description_count )) && continue
+
+                # make sure we don't have descriptions matching in the random list, so as to make less difficult
+                grep -F -f <( <<<"$descriptions" grep -vFx 'to') 1>/dev/null <<<"$random_descriptions" && continue
+
+                # found one, print something
                 echo_entry "$random_descriptions"
                 break
             done
         fi
 
         answer=
+        local first_time=true
         echo_entry "$line"
         while [ "$answer" != 'y' ] && [  "$answer" != 'n' ]
         do
-            read -p "Does this matches '$word' ? [y/n]: " -r answer
+            read -p "Does this matches $(format_word_header "$word" "$zhuyin") ? [y/n]: " -r answer
             # mappings for zhuyin keyboard
             [ "$answer" = 'ㄗ' ] && answer='y'
             [ "$answer" = 'ㄙ' ] && answer='n'
+
+            # in the case the user entered the word mathing the description on the first try, add points to the word
+            $first_time && [ "$answer" != 'y' ] && [  "$answer" != 'n' ] && tdb_contains_word "$answer" && [ "$rnd_word" = "$answer" ] && [ "$matches" = 'n' ] &&
+            {
+                echo_success "Bonus point added to $rnd_word !"
+                tdb_update_entry "$rnd_word" 1 1 0
+                answer='n'
+                break
+            }
+            first_time=false
         done
 
-        [ "$matches" = "$answer" ] && echo_success "Great !" ||
+        [ "$matches" = "$answer" ] && echo_success "Great !$([ "$matches" = "n" ] && echo -n " (correct word: $rnd_word)")" ||
         {
             echo_error "Incorrect answer."
             has_fail=true
@@ -145,13 +137,66 @@ function ex_match_descr # word [description-count]
     ! $has_fail
 }
 
+function ex_match_character # word
+{
+    local word="$1"
+
+    local match_regex="$( <<<"$word" sed -e 's/././g')"
+
+    local entries="$( (echo "$word" ; db_get_word_info "$word" -C100 | cut -d'|' -f$const_db_word | uniq | grep -xe "$match_regex" | grep -xvF "$word" | shuf) | head -n 9 | sort -R )"
+
+    do_clear
+
+    echo_notice "Exercise: Match the corresponding character with the description"
+    echo_notice "Number of entries: $(wc -l <<<"$entries")"
+    echo_notice "Description:"
+
+    local db_entries="$(db_get_word_info "$word")"
+
+    local line=
+    db_get_word_info "$word" | while read -r line
+    do
+        local raw_descriptions="$(db_get_descriptions_from_input <<<"$line" | ex_filter_description "$word" )"
+        [ -z "$raw_descriptions" ] && continue
+        echo
+        echo_entry "$(format_descriptions "$raw_descriptions")"
+    done
+    echo
+
+    local success=true
+    while read -u3 -r line
+    do
+        local test_word="$line"
+
+        local match='n'
+        [ "$test_word" = "$word" ] && match='y'
+        local answer=
+        while [ "$answer" != 'y' ] && [  "$answer" != 'n' ]
+        do
+            read -p "Does ${const_color_blue}$test_word${const_format_reset} matches the description ? [y/n]: " -r answer
+            # mappings for zhuyin keyboard
+            [ "$answer" = 'ㄗ' ] && answer='y'
+            [ "$answer" = 'ㄙ' ] && answer='n'
+        done
+
+        [ "$match" = "$answer" ] && echo_success 'Great !'
+        [ "$match" = "$answer" ] ||
+        {
+            echo_error 'Nope'
+            success=false
+        }
+
+    done 3<<<"$entries"
+
+    $success
+}
 
 # return 0 for success or 1 if it fails
 function ex_zhuyin # word
 {
     local word="$1"
     local zhuyin="$(db_get_zhuyin "$word")"
-    local split_zhuyin="$( <<<"$zhuyin" tr ',' '\n' | trim)"
+    local split_zhuyin="$( <<<"$zhuyin" tr '#' '\n' | trim)"
 
     [ -z "$zhuyin" ] && return 0
 
@@ -160,8 +205,7 @@ function ex_zhuyin # word
     local const_max_tries=2
     echo_entry "Word: $word"
     echo_notice "Excercise: Enter the zhuyin (注音, bopomofo) for this word."
-    echo_notice "It has to be entered in the following form: 'ㄨㄛˇ ˙ㄇㄣ' (for 我們)"
-    echo_notice "Note the prefix position for '˙' and the space between characters"
+    echo_notice "It has to be entered in the following form: 'ㄨㄛˇ ㄇㄣ˙' (for 我們)"
     echo_notice "You have $const_max_tries tries."
 
     local i=0
@@ -204,12 +248,17 @@ function ex_enter_character_for_descr # word
     echo_notice "Excercise: Enter the/a word that matches the description."
     echo_notice "You have $const_max_tries tries."
     echo_notice "As it may not have a perfect record, you will be asked to verify that the last try is correct"
+
+    local line=
+    db_get_word_info "$word" | while read -r line
+    do
+        local raw_descriptions="$(db_get_descriptions_from_input <<<"$line" | ex_filter_description "$word" )"
+        [ -z "$raw_descriptions" ] && continue
+        echo
+        echo_entry "$(format_descriptions "$raw_descriptions")"
+    done
+
     echo
-
-    local raw_descriptions="$(db_get_descriptions "$word" | ex_filter_description "$word" )" # avoid asking stuff that answer the question already
-    local descriptions="$(format_descriptions "$raw_descriptions")"
-
-    echo_entry "$descriptions"
 
     local i=0
     local user_word=
@@ -349,16 +398,15 @@ function ex_enter_descr_for_word # word
     return 1
 }
 
-conf_ex_learn_sentence_pct=65
-# FIXME:
-#conf_ex_learn_sentence_min_len=2 # in word
-#conf_ex_learn_sentence_max_len=10 # in word
 
 function ex_learn_sentence_tts # sentence
 {
-    tts_play cmn-TW Wavenet-A "$1" ; sleep 0.75
-    tts_play cmn-TW Wavenet-A "$1" ; sleep 0.75
-    tts_play cmn-TW Wavenet-A "$1"
+    wait
+    (
+        tts_play cmn-TW Wavenet-A "$1" ; sleep 0.75
+        tts_play cmn-TW Wavenet-A "$1" ; sleep 0.75
+        tts_play cmn-TW Wavenet-A "$1"
+    ) &
 }
 
 # sentence is the data returned by the st_... functions
@@ -367,7 +415,7 @@ function ex_learn_sentence # sentence
     local sentence="${1}"
     [ -z "$sentence" ] && return 0
 
-    local const_max_tries=4
+    local const_max_tries=7
     local const_success_tries=2
 
     do_clear
@@ -377,8 +425,8 @@ function ex_learn_sentence # sentence
     echo_notice "You will have $const_max_tries tries."
 
     local zh_word_list="$(cut -d '#' -f1 <<<"$sentence" | sed -e "s/'''//g")"
-    local src_sentence="$(cut -d '#' -f2 <<<"$sentence" | tr -d ' ' | sed -e 's/她|它/他/g')"
-    local src_simplified_sentence="$(cut -d '#' -f2 <<<"$sentence" | tr -d ' ' | sed -e 's/[[:punct:]]//g' | sed -e 's/她|它/他/g')"
+    local src_sentence="$(cut -d '#' -f2 <<<"$sentence")"
+    local src_simplified_sentence="$(cut -d '#' -f2 <<<"$sentence" | tr -d ' ' | sed -e 's/[[:punct:]]//g' | sed -e 's/[她它他]/他/g')"
     local tr_sentence="$(cut -d '#' -f3 <<<"$sentence" | sed -e "s/'''//g")"
     # words that are in the sentence but not in the TDB (so the user isn't expected to know them)
     local missing_words="$(cut -d '#' -f4 <<<"$sentence")"
@@ -395,6 +443,7 @@ function ex_learn_sentence # sentence
     ex_learn_sentence_tts "$src_sentence"
 
     local line=
+    local trline=
     local fail_count=0
     local success=false
     while (( fail_count < const_max_tries ))
@@ -404,10 +453,11 @@ function ex_learn_sentence # sentence
 
         # empty line, play the stuff again and retry. Does not count anything.
         [ -z "$line" ] && { ex_learn_sentence_tts "$src_sentence" ; continue ; }
+        [ "$line" = ":end" ] && break
 
-        local trline="$( <<<"$line" sed -e 's/她|它/他/g')"
+        trline="$( <<<"$line" sed -e 's/[她它他]/他/g' | sed -e 's/[[:punct:]]//g')"
 
-        [ "$(sed -e 's/[[:punct:]]//g' <<<"$trline")" = "$src_simplified_sentence" ] &&
+        [ "$trline" = "$src_simplified_sentence" ] &&
         {
             (( fail_count >= const_success_tries )) && { ex_failure_score=0 ; break ; }
             success=true
@@ -416,6 +466,18 @@ function ex_learn_sentence # sentence
 
         echo_error 'nope...'
         let fail_count++
+
+        # print some help:
+        (( fail_count >= const_success_tries )) &&
+        {
+            echo -n "Here are the incorrect characters: "
+            local file1="$(mktemp)"
+            local file2="$(mktemp)"
+            echo "$trline" > "$file1"
+            echo "$src_simplified_sentence" > "$file2"
+            git diff --color-word=. --no-index -- "$file1" "$file2" | tail -n+6 | perl -pe 's/[[:cntrl:]]\[32m.*?[[:cntrl:]]\[m//g'
+            rm "$file1" "$file2"
+        }
     done
 
     # failure:
@@ -427,15 +489,13 @@ function ex_learn_sentence # sentence
         format_short_word_info "$st_word"
     done
 
+    wait
+    tts_play en-US Wavenet-A "$tr_sentence"
+    tts_play cmn-TW Wavenet-A "$src_sentence"
     tts_play cmn-TW Wavenet-A "$src_sentence"
 
     $success && echo_success 'Great !' || echo_error 'This is a failure.'
     $success && return 0 || return 1
-}
-
-function ex_learn_sentence__valid # word
-{
-    (( $(st_get_sentences_for_words "$1" | wc -l) > 0 )) && is_tts_enabled
 }
 
 
@@ -451,9 +511,17 @@ function ex_learn_word # word
     echo
     echo_notice "> Remember this word. When it's done, press enter. You'll be asked a few questions."
     read -r __scratch
-    do_clear
+
+    # match the word:
+    while ! ex_match_character "$word"
+    do
+        format_word_info "$word"
+        read -r __scratch -p "[press enter to continue]"
+        do_clear
+    done
 
     # re-enter the word you've just seen:
+    do_clear
     local i=0
     while true
     do
@@ -467,12 +535,11 @@ function ex_learn_word # word
 
         let ++i
 
-        # three fails: show the info for a few seconds and start again
-        (( i > 3 )) &&
+        # three fails: show the info and start again
+        (( i > 2 )) &&
         {
             format_word_info "$word"
-            echo_notice "> Plz refresh your memory for a few seconds"
-            sleep 4
+            read -r __scratch -p "[press enter to continue]"
             do_clear
             i=0
         }
@@ -483,8 +550,7 @@ function ex_learn_word # word
     while ! ex_enter_descr_for_word "$word"
     do
         format_word_info "$word"
-        echo_notice "> Plz refresh your memory for a few seconds"
-        sleep 4
+        read -r __scratch -p "[press enter to continue]"
         do_clear
     done
 
@@ -494,8 +560,7 @@ function ex_learn_word # word
     while ! ex_match_descr $word
     do
         format_word_info "$word"
-        echo_notice "> Plz refresh your memory for a few seconds"
-        sleep 4
+        read -r __scratch -p "[press enter to continue]"
         do_clear
     done
     sleep 1
@@ -526,15 +591,21 @@ help_conf_ex_test_zhuyin_score="Proportional score of the 'zhuyin' exercise"
 conf_ex_test_word_for_descr_score=23
 help_conf_ex_test_word_for_descr_score="Proportional score of the 'word for descr' exercise"
 
+conf_ex_test_match_character_score=20
+help_conf_ex_test_match_character_score="Proportional score of the 'match character' exercise"
 
 function ex_get_random_exercise
 {
-    declare -A fnc_array
+    # DEBUG:
+    #echo ex_match_descr ; return
+
+    local -A fnc_array
     fnc_array+=(
         [ex_enter_descr_for_word]=$conf_ex_test_descr_for_word_score
         [ex_match_descr]=$conf_ex_test_match_descr_score
         [ex_zhuyin]=$conf_ex_test_zhuyin_score
         [ex_enter_character_for_descr]=$conf_ex_test_word_for_descr_score
+        [ex_match_character]=$conf_ex_test_match_character_score
     )
 
     local sum=0
@@ -561,7 +632,7 @@ function ex_get_random_exercise
 
 }
 
-conf_ex_default_failure_cost=3
+conf_ex_default_failure_cost=2
 help_conf_ex_default_failure_cost="How much a failure remove points. Some exercises may override this."
 
 function ex_test_word # word
@@ -572,19 +643,19 @@ function ex_test_word # word
     declare -A exercises_has_success
     declare -A exercises_is_valid
     exercises_has_success+=(
+        [ex_match_character]=true
         [ex_match_descr]=true
         [ex_zhuyin]=false
         [ex_enter_character_for_descr]=true
         [ex_enter_descr_for_word]=true
-        [ex_learn_sentence]=true
     )
     exercises_is_valid+=(
         [_BAD_]=false
+        [ex_match_character]=true
         [ex_match_descr]=true
         [ex_zhuyin]=true
         [ex_enter_character_for_descr]=true
         [ex_enter_descr_for_word]=true
-        [ex_learn_sentence]=ex_learn_sentence__valid
     )
 
     # select a valid exercise for the word:

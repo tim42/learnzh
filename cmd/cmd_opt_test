@@ -5,7 +5,7 @@
 cmd_opt_test_round_size=5
 help_cmd_opt_test_round_size="Size of a round before re-choosing new random words"
 
-cmd_opt_test_random_score=8
+cmd_opt_test_random_score=13
 help_cmd_opt_test_random_score="Proportional score of the 'random' sort mode"
 
 cmd_opt_test_least_recent_score=13
@@ -14,7 +14,7 @@ help_cmd_opt_test_random_score="Proportional score of the 'least recent' sort mo
 cmd_opt_test_most_failed_score=1
 help_cmd_opt_test_random_score="Proportional score of the 'most failed' sort mode"
 
-cmd_opt_test_default_sort_score=35
+cmd_opt_test_default_sort_score=30
 help_cmd_opt_test_random_score="Proportional score of the default sort mode"
 
 

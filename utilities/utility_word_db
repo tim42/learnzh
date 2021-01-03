@@ -5,27 +5,31 @@ conf_db_file="$conf_base_path/word_db"
 
 
 # DB entries
-const_db_word=1
-const_db_zhuyin=2
-const_db_descr=3
+const_db_word=2
+const_db_zhuyin=3
+const_db_descr=4
 
-# read the zhuyin from the DB or scrap it from wiktionary. Insert it in the DB if it was missing.
+# read the zhuyin from the DB, multiple pronunciations are # separated
 function db_get_zhuyin # word
 {
-    local zhuyin="$(<"$conf_db_file" grep -E "^$1\|" | head -n1 | cut -d'|' -f${const_db_zhuyin} )"
+    grep -F "|$1|" "$conf_db_file" | db_get_zhuyin_from_input | tr '\n' '#' | sed -e 's/#$//g'
+}
 
-    [ ! -z "$zhuyin" ] && { echo -n "$zhuyin" ; return ; }
-
-    local zhuyin="$(wiktionary_get_zhuyin "$1" | tr ',' '\n' | trim | unsorted_uniq | tr '\n' ',' | sed -e 's/,$//')"
-
-    echo -n "$zhuyin"
-    sed -e "s/^$1||/$1|$zhuyin|/" -i "$conf_db_file"
+function db_get_zhuyin_from_input
+{
+    cut -d'|' -f${const_db_zhuyin}
 }
 
 # return all the descriptions (one per line) for the word
+
 function db_get_descriptions # word
 {
-    <"$conf_db_file" grep -E "^$1\|" | cut -d'|' -f${const_db_descr}-     | tr '_' ' ' 
+    grep -F "|$1|" "$conf_db_file" | db_get_descriptions_from_input
+}
+
+function db_get_descriptions_from_input
+{
+    cut -d'|' -f${const_db_descr}- | sed -e 's@^/@@g' -e 's@/$@@g' | tr '/' '\n' | sed '/^[[:space:]]*$/d'
 }
 
 function db_get_related_words # word
@@ -40,9 +44,18 @@ function db_get_matching_descr # param
     [ ! -z "$word" ] && <"$conf_db_file" cut -d'|' -f${const_db_word},${const_db_descr} | tr '_' ' ' | grep "$word" | cut -d'|' -f1 | unsorted_uniq
 }
 
+# see db_get_..._from_input
+# see $const_db_...
+function db_get_word_info # word, [grep-options...]
+{
+    local word="$1"
+    shift
+    grep -F "|$word|" "$@" -- "$conf_db_file" 
+}
+
 function db_contains_word # word
 {
-    <"$conf_db_file" grep -E "^$1\|" 1>&/dev/null
+    grep -F "|$1|" "$conf_db_file" 1>&/dev/null
 }
 
 # execute a command for each entries in the DB

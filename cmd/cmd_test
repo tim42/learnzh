@@ -3,7 +3,7 @@
 
 function cmd_test_get_sort_mode
 {
-    declare -A fnc_array
+    local -A fnc_array
     fnc_array+=(
         [tdb_shuf_words]=$cmd_opt_test_random_score
         [tdb_sort_by_last_success_time]=$cmd_opt_test_least_recent_score

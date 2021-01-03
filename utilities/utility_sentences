@@ -9,43 +9,48 @@ conf_sentence_db_file="$conf_base_path/sentence_db"
 function st_get_sentences # [min-pct-know-words:75]
 {
     local matching_pct="${1:-75}"
-    local debug_print_bad_words=false
 
     local line=
     while read -r line
     do
-        local word_list="$(<<<"$line" cut -d'|' -f1)"
-        local original="$(<<<"$line" cut -d'|' -f2)"
-        local tr="$(<<<"$line" cut -d'|' -f3)"
-
-        local word_count=0
-        local unknown_word_count=0
-        local is_bad=false
-        local st_word=
-        local unknown_words=
-        for st_word in $word_list
-        do
-            let word_count++
-            db_contains_word "$st_word" || [ "$st_word" = '一個' ] || { is_bad=true ; $debug_print_bad_words && echo "bad word: $st_word"; break ; }
-            [ "$word" = "$st_word" ] || tdb_contains_word "$st_word" ||
-            {
-                let unknown_word_count++
-                unknown_words="$unknown_words $st_word"
-            }
-        done
-
-        # skip bad sentences
-        $is_bad && continue
-        (( word_count == 0 )) && continue
-        (( (unknown_word_count * 100 / word_count) > (100 - matching_pct) )) && continue # bad sentence
-
-        echo "${word_list}#${original}#${tr}#${unknown_words:1}"
+        st_check_sentence "$line" "$matching_pct"
     done
 }
 
-function st_read_file # [from: 1] [to: 100]
+# format:
+#   space-separated-words#original#english#unknown words
+# with space separated words in the original
+function st_check_sentence # sentence-data [min-pct-know-words:75]
 {
-    tail -n+"${1:-1}" "$conf_sentence_db_file" | head -n"${2:-150}"
+    local line="${1}"
+    local matching_pct="${2:-75}"
+    local debug_print_bad_words=false
+
+    local word_list="$(<<<"$line" cut -d'|' -f1)"
+
+    local word_count="$( <<<"$word_list" wc -w)"
+    local unknown_words="$(tr ' ' '\n' <<<"$word_list" | sed -e 's/^/|/g' -e 's/$/|/g' | grep -v -F -f <(tdb_read | cut -d'|' -f1 | sed -e 's/^/|/g' -e 's/$/|/g') | tr -d '|' | paste -d' ' -s)"
+    local unknown_words_count="$(wc -w <<<"$unknown_words")"
+
+    (( (100 - unknown_words_count * 100 / word_count) < (matching_pct) )) && return 1 # bad sentence
+
+    local st_word=
+    for st_word in $unknown_words # we only need to iterate over the unknown word list
+    do
+        db_contains_word "$st_word" || [ "$st_word" = '一個' ] || return 1
+    done
+
+    local original="$(<<<"$line" cut -d'|' -f2)"
+    local tr="$(<<<"$line" cut -d'|' -f3)"
+    {
+        flock -x 0
+        echo "${word_list}#${original}#${tr}#${unknown_words}"
+    }
+}
+
+function st_read_file # [from: 1] [to: 150]
+{
+    cat "$conf_sentence_db_file" | tail -n+"${1:-1}" | head -n"${2:-150}"
 }
 
 function st_get_sentences_for_words_wiktionnary # word, [min-pct-know-words:75]

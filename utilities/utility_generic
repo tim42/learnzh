@@ -10,7 +10,7 @@ function unsorted_uniq
 
 function trim
 {
-    awk '{$1=$1};1'
+    awk '{$1=$1};1' | awk NF
 }
 
 
@@ -32,7 +32,7 @@ function echo_error
 
 function echo_entry
 {
-    echo -n "${const_color_blue}${const_format_bold}"
+    echo -n "${const_color_blue}"
     echo -n "$@"
     echo "${const_format_reset}"
 }
@@ -62,11 +62,153 @@ function trim_content
     sed -e 's/{{.*}}//g' # remove sound stuff
 }
 
+# pipeline translation from pinyin to zhuyin (built for the cedict pinyin format)
+function pinyin_to_zhuyin
+{
+    local pinyin="$1"
+
+    # inspired by: https://github.com/logicmason/pinyin-to-zhuyin/blob/master/pinyin-to-zhuyin.js
+    # Which is under MIT license.
+    # The table is passed through:
+    #   search: "([^"]*)"[: ]+"([a-zü]*)"[, 0-9{}:\n]*
+    #   replace: ["\2"]="\1"\n
+
+    local subst=()
+
+    # it's a bit ugly, but yeah. What did you expect ?
+    local table=(
+        "yao|ㄧㄠ"
+        "you|ㄧㄡ"
+        "yue|ㄩㄝ"
+        "yong|ㄩㄥ"
+        "yuan|ㄩㄢ"
+        "ying|ㄧㄥ"
+        "yun|ㄩㄣ"
+        "yang|ㄧㄤ"
+        "yan|ㄧㄢ"
+        "yin|ㄧㄣ"
+        "wei|ㄨㄟ"
+        "wang|ㄨㄤ"
+        "wan|ㄨㄢ"
+        "weng|ㄨㄥ"
+        "wen|ㄨㄣ"
+        "wai|ㄨㄞ"
+
+        "iang|ㄧㄤ"
+        "ing|ㄧㄥ"
+
+        "iai|ㄧㄞ"
+        "iao|ㄧㄠ"
+        "iu|ㄧㄡ"
+        "ian|ㄧㄢ"
+        "in|ㄧㄣ"
+
+        "uai|ㄨㄞ"
+        "uang|ㄨㄤ"
+        "uan|ㄨㄢ"
+        "ua|ㄨㄚ"
+        "uo|ㄨㄛ"
+        "ui|ㄨㄟ"
+        "un|ㄨㄣ"
+        "u:n|ㄩㄣ"
+        "iong|ㄩㄥ"
+        "ong|ㄨㄥ"
+
+        "uan|ㄩㄢ"
+        "un|ㄩㄣ"
+        "ong|ㄩㄥ"
+        "ue|ㄩㄝ"
+
+        "zhi|ㄓ"
+        "chi|ㄔ"
+        "shi|ㄕ"
+        "ri|ㄖ"
+        "ang|ㄤ"
+        "eng|ㄥ"
+        "ai|ㄞ"
+        "ei|ㄟ"
+        "ao|ㄠ"
+        "ou|ㄡ"
+        "er|ㄦ"
+
+        "an|ㄢ"
+        "en|ㄣ"
+        "wa|ㄨㄚ"
+        "wo|ㄨㄛ"
+        "wu|ㄨ"
+        "ya|ㄧㄚ"
+        "ye|ㄧㄝ"
+        "yu|ㄩ"
+
+        "ia|ㄧㄚ"
+        "io|ㄧㄛ"
+        "ie|ㄧㄝ"
+
+        "zh|ㄓ"
+        "ch|ㄔ"
+        "sh|ㄕ"
+        "zi|ㄗ"
+        "ci|ㄘ"
+        "si|ㄙ"
+        "r|ㄖ"
+        "yi|ㄧ"
+        "u:e|ㄩㄝ"
+
+        "b|ㄅ"
+        "p|ㄆ"
+        "m|ㄇ"
+        "f|ㄈ"
+        "d|ㄉ"
+        "t|ㄊ"
+        "n|ㄋ"
+        "l|ㄌ"
+        "g|ㄍ"
+        "k|ㄎ"
+        "h|ㄏ"
+        "j|ㄐ"
+        "q|ㄑ"
+        "x|ㄒ"
+        "z|ㄗ"
+        "c|ㄘ"
+        "s|ㄙ"
+        "i|ㄧ"
+        "u:|ㄩ"
+        "u|ㄨ"
+        "a|ㄚ"
+        "o|ㄛ"
+        "e|ㄜ"
+        "v|ㄩ"
+
+        "1|"
+        "5|˙"
+        "2|ˊ"
+        "3|ˇ"
+        "4|ˋ"
+    )
+
+    # build the massive perl substr:
+    local str=
+    for str in "${table[@]}"
+    do
+        key="$(cut -d'|' -f1<<<"$str")"
+        value="$(cut -d'|' -f2 <<<"$str")"
+        subst+=(-e"s/$key/$value/g;")
+    done
+
+    perl -p "${subst[@]}" -e 's/(ㄐ|ㄑ|ㄒ)ㄨ/\1ㄩ/g;'
+}
 
 function format_descriptions # descr
 {
     local descriptions="$1"
     awk '$0=" - "$0' <<<"$descriptions"
+}
+
+function format_word_header # word, zhuyin
+{
+    local word="$1"
+    local zhuyin="$2"
+    echo -n "${const_format_reset}${const_color_blue}$word${const_format_reset} [[ ${const_color_cyan}$zhuyin${const_format_reset} ]]"
 }
 
 function format_word_info # word, [extended-info:false]
@@ -77,31 +219,27 @@ function format_word_info # word, [extended-info:false]
 
     [ -z "$word" ] && return
 
-    local zhuyin="$(db_get_zhuyin "$word")"
-    local descriptions="$(db_get_descriptions "$word")"
-    local notes="$(db_get_descriptions "@$word")"
-    local descr_line_count=$(wc -l <<<"$descriptions")
-
-
-    (( descr_line_count <= 1 )) &&
-        (echo -n "${const_color_blue}$word${const_format_reset} [[ ${const_color_cyan}$zhuyin${const_format_reset} ]] : " ; echo "$descriptions" ) ||
-        ( echo -e "${const_color_blue}$word${const_format_reset} [[ ${const_color_cyan}$zhuyin${const_format_reset} ]] :\n$(format_descriptions "$descriptions")" )
-
-    [ ! -z "$notes" ] && (
-        echo 'usage notes:'
-        format_descriptions "$notes"
-    )
-
+    local line=
+    db_get_word_info "$word" | while read -r line
+    do
+        local zhuyin="$(db_get_zhuyin_from_input <<<"$line")"
+        local descriptions="$(db_get_descriptions_from_input <<<"$line")"
+        local descr_line_count=$(wc -l <<<"$descriptions")
+        format_word_header "$word" "$zhuyin"
+        (( descr_line_count <= 1 )) &&
+            ( echo -n " : " ; echo "$descriptions" ) ||
+            ( echo -e " :\n$(format_descriptions "$descriptions")" )
+    done
 
     # query wiktionary
     local wiktionary_data="$(wiktionary_get_word_data "$word")"
-    local wdescr="$(grep -E "^$1\|" <<<"$wiktionary_data" | cut -d'|' -f${const_db_descr}-   | tr '_' ' ' )"
-    local wnote="$(grep -E "^@$1\|" <<<"$wiktionary_data" | cut -d'|' -f${const_db_descr}-   | tr '_' ' ' )"
+    local wdescr="$(grep -E "^$1\|" <<<"$wiktionary_data" | cut -d'|' -f${const_db_descr}-   | tr '_' ' ' | awk NF )"
+    local wnote="$(grep -E "^@$1\|" <<<"$wiktionary_data" | cut -d'|' -f${const_db_descr}-   | tr '_' ' ' | awk NF )"
     local wex="$(grep -E "^#$1\|" <<<"$wiktionary_data" | cut -d'|' -f${const_db_descr}- | tr -d '^' | tr '_' ' ' | perl -p -e 's/\{.*?\}//g;' )"
 
     ( [ ! -z "$wdescr" ]  || [ ! -z "$wnote" ] ) && echo '  --------------- '
 
-    [ ! -z "$wdescr" ] && wiktionary_format_description "$wdescr"
+    $ex_info && [ ! -z "$wdescr" ] && wiktionary_format_description "$wdescr"
     [ ! -z "$wnote" ] && wiktionary_format_description "$wnote"
 
     $ex_info && [ ! -z "$wex" ] &&
@@ -117,27 +255,30 @@ function format_short_word_info # word, [max-column:120]
     local word="$1"
     local max_line_length=${2:-120}
 
-    local zhuyin="$(db_get_zhuyin "$word")"
-    local descriptions="$(db_get_descriptions "$word")"
-
-    local current_line="${const_color_blue}$word${const_format_reset} [[ ${const_color_cyan}$zhuyin${const_format_reset} ]] :"
-    local initial_affectation=true
-    local line=
-    while read -r line
+    local db_line=
+    db_get_word_info "$word" | while read -r db_line
     do
-        (( ${#current_line} + ${#line} >= max_line_length )) &&
-        {
-            echo "$current_line"
-            current_line="    $line"
-            initial_affectation=false
-        } ||
-        {
-            $initial_affectation && current_line="$current_line $line"
-            $initial_affectation || current_line="$current_line / $line"
-            initial_affectation=false
-        }
-    done <<<"$descriptions"
+        local zhuyin="$(db_get_zhuyin_from_input <<<"$db_line")"
+        local descriptions="$(db_get_descriptions_from_input <<<"$db_line")"
 
-    echo "$current_line"
+        local current_line="$(format_word_header "$word" "$zhuyin") :"
+        local initial_affectation=true
+        local line=
+        while read -u3 -r line
+        do
+            (( ${#current_line} + ${#line} >= max_line_length )) &&
+            {
+                echo "$current_line"
+                current_line="    $line"
+                initial_affectation=false
+            } ||
+            {
+                $initial_affectation && current_line="$current_line $line"
+                $initial_affectation || current_line="$current_line / $line"
+                initial_affectation=false
+            }
+        done 3<<<"$descriptions"
+        echo "$current_line"
+    done
 }
 

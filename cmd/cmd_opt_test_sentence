@@ -1,5 +1,5 @@
 
-cmd_opt_test_sentence_round_size=5
+cmd_opt_test_sentence_round_size=7
 help_cmd_opt_test_sentence_round_size="Size of a round before re-choosing new random words"
 
 #usage_ext_cmd_test_sentence=""

@@ -12,7 +12,12 @@ cmdcheck sort
 cmdcheck shuf
 cmdcheck wc
 cmdcheck sleep
+cmdcheck usleep
+cmdcheck git
 cmdcheck less
 cmdcheck dd
+cmdcheck gunzip
+cmdcheck iconv
+cmdcheck paste
 cmdcheck opencc # necessary for simplified -> trad translation.
 
