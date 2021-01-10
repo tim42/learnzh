@@ -150,6 +150,7 @@ function pinyin_to_zhuyin
         "zi|ㄗ"
         "ci|ㄘ"
         "si|ㄙ"
+        "r5|ㄦ˙"
         "r|ㄖ"
         "yi|ㄧ"
         "u:e|ㄩㄝ"
@@ -280,5 +281,17 @@ function format_short_word_info # word, [max-column:120]
         done 3<<<"$descriptions"
         echo "$current_line"
     done
+}
+
+function print_word_characters_info # word
+{
+    local word="$1"
+    local i=
+    for (( i=0; i<${#word}; i++ ))
+    do
+        local character="${word:$i:1}"
+        format_short_word_info "$character"
+    done
+
 }
 
