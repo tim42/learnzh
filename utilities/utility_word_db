@@ -50,7 +50,14 @@ function db_get_word_info # word, [grep-options...]
 {
     local word="$1"
     shift
-    grep -F "|$word|" "$@" -- "$conf_db_file" 
+    grep -F "|$word|" "$@" -- "$conf_db_file"
+}
+
+function db_grep_word_info # word/regex, [grep-options...]
+{
+    local word="$1"
+    shift
+    grep -E "^\|$word\|" "$@" -- "$conf_db_file"
 }
 
 function db_contains_word # word
