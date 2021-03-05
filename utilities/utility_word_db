@@ -1,8 +1,11 @@
-
+#!/bin/bash # just for automatic syntactic coloration purpose
 # utilities related to the word DB / Dict
 
 conf_db_file="$conf_base_path/word_db"
+help_conf_db_file="path+prefix of the word DB / dict"
 
+conf_db_dict_language="en"
+help_conf_db_dict_language="Dictionary to use. (select the destination language). Will fallback to english if a word is not present (and if the dict is not the english one)"
 
 # DB entries
 const_db_word=2
@@ -10,9 +13,10 @@ const_db_zhuyin=3
 const_db_descr=4
 
 # read the zhuyin from the DB, multiple pronunciations are # separated
-function db_get_zhuyin # word
+function db_get_zhuyin # word [language]
 {
-    grep -F "|$1|" "$conf_db_file" | db_get_zhuyin_from_input | tr '\n' '#' | sed -e 's/#$//g'
+    local language="${2:-${conf_db_dict_language}}"
+    grep -F "|$1|" "${conf_db_file}_${language}" | db_get_zhuyin_from_input | tr '\n' '#' | sed -e 's/#$//g'
 }
 
 function db_get_zhuyin_from_input
@@ -22,9 +26,10 @@ function db_get_zhuyin_from_input
 
 # return all the descriptions (one per line) for the word
 
-function db_get_descriptions # word
+function db_get_descriptions # word [language]
 {
-    grep -F "|$1|" "$conf_db_file" | db_get_descriptions_from_input
+    local language="${2:-${conf_db_dict_language}}"
+    grep -F "|$1|" "${conf_db_file}_${language}" | db_get_descriptions_from_input
 }
 
 function db_get_descriptions_from_input
@@ -32,45 +37,54 @@ function db_get_descriptions_from_input
     cut -d'|' -f${const_db_descr}- | sed -e 's@^/@@g' -e 's@/$@@g' | tr '/' '\n' | sed '/^[[:space:]]*$/d'
 }
 
-function db_get_related_words # word
+function db_get_related_words # word [language]
 {
+    local language="${2:-${conf_db_dict_language}}"
     local word="$1"
-    [ ! -z "$word" ] && <"$conf_db_file" cut -d'|' -f${const_db_word} | grep "$word" | unsorted_uniq
+    [ ! -z "$word" ] && <"${conf_db_file}_${language}" cut -d'|' -f${const_db_word} | grep "$word" | unsorted_uniq
 }
 
-function db_get_matching_descr # param
+function db_get_matching_descr # param [language]
 {
+    local language="${2:-${conf_db_dict_language}}"
     local word="$1"
-    [ ! -z "$word" ] && <"$conf_db_file" cut -d'|' -f${const_db_word},${const_db_descr} | tr '_' ' ' | grep "$word" | cut -d'|' -f1 | unsorted_uniq
+    [ ! -z "$word" ] && <"${conf_db_file}_${language}" cut -d'|' -f${const_db_word},${const_db_descr} | tr '_' ' ' | grep "$word" | cut -d'|' -f1 | unsorted_uniq
 }
 
 # see db_get_..._from_input
 # see $const_db_...
-function db_get_word_info # word, [grep-options...]
+function db_get_word_info # word, [language], [grep-options...]
 {
+    local language="${2:-${conf_db_dict_language}}"
     local word="$1"
     shift
-    grep -F "|$word|" "$@" -- "$conf_db_file"
+    shift
+    grep -F "|$word|" "$@" -- "${conf_db_file}_${language}"
 }
 
-function db_grep_word_info # word/regex, [grep-options...]
+function db_grep_word_info # word/regex, [language], [grep-options...]
 {
+    local language="${2:-${conf_db_dict_language}}"
     local word="$1"
     shift
-    grep -E "^\|$word\|" "$@" -- "$conf_db_file"
+    shift
+    grep -E "^\|$word\|" "$@" -- "${conf_db_file}_${language}"
 }
 
-function db_contains_word # word
+function db_contains_word # word [language]
 {
-    grep -F "|$1|" "$conf_db_file" 1>&/dev/null
+    local language="${2:-${conf_db_dict_language}}"
+    grep -F "|$1|" "${conf_db_file}_${language}" 1>&/dev/null
 }
 
 # execute a command for each entries in the DB
 # the command will be called in the following form:
 # cmd "line" "entry-index" "args"...
 # a non-zero return value will stop the loop.
-function db_for_each_entries # cmd args...
+function db_for_each_entries # language cmd args...
 {
+    local language="${1:-${conf_db_dict_language}}"
+    shift
     local command="$1"
     shift
     local line=
@@ -79,5 +93,5 @@ function db_for_each_entries # cmd args...
     do
         "$command" "$line" $count "$@" || break
         let ++count
-    done <"$db_file"
+    done <"${conf_db_file}_${language}"
 }

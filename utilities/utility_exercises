@@ -1,4 +1,4 @@
-
+#!/bin/bash # just for automatic syntactic coloration purpose
 
 
 # exercises:
@@ -14,7 +14,7 @@ function ex_filter_description # word
 function ex_match_descr # word [description-count]
 {
     local word="$1"
-    local max_descriptions=${2:-4}
+    local max_descriptions=${2:-6}
 
     local db_entries="$(db_get_word_info "$word")"
 
@@ -41,12 +41,11 @@ function ex_match_descr # word [description-count]
     # the full description of the word, so as to avoid any possible confusionL
     local descriptions="$(db_get_descriptions "$word" | ex_filter_description "$word")"
 
-    local round_count=$((RANDOM % 4 + 7))
-    local total_descr_count="$(wc -l "$conf_db_file" | cut -d' ' -f1)"
+    local round_count=$((RANDOM % 2 + 3))
     do_clear
 
     echo_notice "Excercise: Select whether or not the description matches the word."
-    echo_notice "NOTE: there will $round_count rounds. [total number of descr: $total_descr_count]"
+    echo_notice "NOTE: there will $round_count rounds."
     echo_notice "Word: $(format_word_header "$word" "$zhuyin")"
 
     is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
@@ -66,15 +65,14 @@ function ex_match_descr # word [description-count]
 
     # Set the failure score. Each failure will increment this value
     ex_failure_score=0
-
+    local valid_round=$((RANDOM%round_count))
     while (( i < round_count ))
     do
+        local is_valid=$((i==valid_round))
         let ++i
 
         echo
-
-        local is_valid=$(( (RANDOM + $(date +%s) ) % 4))
-        if (( is_valid == 0 )) && (( matching_description_count >= random_description_count ))
+        if (( is_valid == 1 )) && (( matching_description_count >= random_description_count ))
         then
             matches=y
             # random sleep so that I cannot distinguish between real and not real selection
@@ -150,7 +148,7 @@ function ex_match_character # word
     for (( i=0; i<${#word}; i++ ))
     do
         local character="${word:$i:1}"
-        characters_variants+=("$(db_grep_word_info "." | uniq | grep -C10 -F "|$character|" | shuf | cut -d'|' -f$const_db_word)")
+        characters_variants+=("$(db_grep_word_info "." | uniq | grep -C5 -F "|$character|" | shuf | cut -d'|' -f$const_db_word)")
     done
 
     local entries="$word"
@@ -166,7 +164,7 @@ function ex_match_character # word
         entries="$entries|$variant"
     done
 
-    local entries="$( <<<"$entries" tr '|' '\n' | shuf )"
+    local entries="$( <<<"$entries" tr '|' '\n' | unsorted_uniq | shuf )"
 
     do_clear
 
@@ -607,16 +605,16 @@ function ex_learn_word # word
 conf_ex_test_descr_for_word_score=25
 help_conf_ex_test_descr_for_word_score="Proportional score of the 'descr for word' exercise"
 
-conf_ex_test_match_descr_score=12
+conf_ex_test_match_descr_score=8
 help_conf_ex_test_match_descr_score="Proportional score of the 'match descr' exercise"
 
-conf_ex_test_zhuyin_score=5
+conf_ex_test_zhuyin_score=2
 help_conf_ex_test_zhuyin_score="Proportional score of the 'zhuyin' exercise"
 
-conf_ex_test_word_for_descr_score=23
+conf_ex_test_word_for_descr_score=25
 help_conf_ex_test_word_for_descr_score="Proportional score of the 'word for descr' exercise"
 
-conf_ex_test_match_character_score=20
+conf_ex_test_match_character_score=9
 help_conf_ex_test_match_character_score="Proportional score of the 'match character' exercise"
 
 function ex_get_random_exercise
@@ -629,8 +627,8 @@ function ex_get_random_exercise
         [ex_enter_descr_for_word]=$conf_ex_test_descr_for_word_score
         [ex_match_descr]=$conf_ex_test_match_descr_score
         [ex_zhuyin]=$conf_ex_test_zhuyin_score
-        [ex_enter_character_for_descr]=$conf_ex_test_word_for_descr_score
         [ex_match_character]=$conf_ex_test_match_character_score
+        [ex_enter_character_for_descr]=$conf_ex_test_word_for_descr_score
     )
 
     local sum=0
@@ -659,6 +657,10 @@ function ex_get_random_exercise
 
 conf_ex_default_failure_cost=2
 help_conf_ex_default_failure_cost="How much a failure remove points. Some exercises may override this."
+
+conf_ex_failure_trigger_more_learning=true
+help_conf_ex_failure_trigger_more_learning="Whether the definition / zhuyin exercises will trigger (on loop) upon failure"
+boolean_conf_ex_failure_trigger_more_learning=
 
 function ex_test_word # word
 {
@@ -693,6 +695,7 @@ function ex_test_word # word
 
     # do the exercise:
     ex_failure_score=$conf_ex_default_failure_cost
+    local has_faillure=false
     if $function "$word"
     then
         debug_log "exercise: success"
@@ -702,6 +705,7 @@ function ex_test_word # word
         ${exercises_has_success["$function"]} || echo_notice "Success does not exist for this test"
         ${exercises_has_success["$function"]} && tdb_update_entry $word 1 0 $failure_score
     else
+        has_faillure=true
         debug_log "exercise: failure"
 
         echo_error "Failure cost: $ex_failure_score"
@@ -715,4 +719,29 @@ function ex_test_word # word
     is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
     echo_notice "> [Press enter to continue]"
     read -r __scratch
+
+    # failure mode:
+    if $has_faillure && $conf_ex_failure_trigger_more_learning
+    then
+      while ! ex_enter_descr_for_word "$word"
+      do
+        format_word_info "$word"
+        echo_notice "> [Press enter to retry]"
+        read -r __scratch
+      done
+      while ! ex_zhuyin "$word"
+      do
+        format_word_info "$word"
+        echo_notice "> [Press enter to retry]"
+        read -r __scratch
+      done
+
+      echo
+      format_word_info "$word"
+      # (( ${#word} > 1 )) && echo_notice "Composed of the following characters:" && print_word_characters_info "$word"
+      echo
+      is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
+      echo_notice "> [Press enter to continue]"
+      read -r __scratch
+    fi
 }

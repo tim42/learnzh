@@ -1,4 +1,4 @@
-
+#!/bin/bash # just for automatic syntactic coloration purpose
 
 function _create_conf_file # file
 {
@@ -65,36 +65,26 @@ EOF
     done
 }
 
-function _reset_word_db # raw_dict_file
+function _reset_word_db # raw_dict_file dest_language_code
 {
     local raw_dict_file="$1"
+    local language_code="$2"
 
     local line_count=$(grep -vE '^#' <"$raw_dict_file" | wc -l)
-    log "Resetting the DB (source file contains $line_count entries)"
+    log "Resetting the $language_code DB (source file contains $line_count entries)"
 
     # the destination format is: |trad-word|zhuyin|/(descriptions/)+
     # but to speed things up we go to the intermediate trad-word|/(descriptions/)+
     # and add a slash at the start of each lines
+    #
+    # NOTE: I do not take the trad word from the dict as I do not trust the source of that trad word as it can be either be HK-trad or TW-trad.
+    #       so instead a conversion from simplified to TW-trad is done to have a more consistent content.
     (
         paste -d '|||\n' \
-           <(grep -vE '^#' "$raw_dict_file" | cut -d' ' -f1) \
+           <(grep -vE '^#' "$raw_dict_file" | cut -d' ' -f2 | opencc -c s2tw.json ) \
            <(grep -vE '^#' "$raw_dict_file" | perl -p -e 's/.*?\[(.*?)\].*/\1/g' | tr '[:upper:]' '[:lower:]' | pinyin_to_zhuyin ) \
            <(grep -vE '^#' "$raw_dict_file" | perl -p -e 's@.*?[/](.*)[/]@/$1/@g') #\
-    ) | sed -e 's/^/|/g'  >"$conf_db_file"
-
-    return
-    # clear the db file & reformat the raw db file:
-    local line=
-    local i=0
-    grep -vE '^#' <"$raw_dict_file" | while read -r line
-    do
-        (( i % 100 == 0 )) && echo -ne "$i / $line_count entries ($(( i * 100 / (line_count+1) )) %)  \r" 1>&2
-
-        local word="$(cut -d' ' -f1 <<<"$line")"
-        cut -d'/' -f2- <<<"${line:0:-2}" | tr '/' '\n' | awk '$0="'"$word||"'"$0'
-        let ++i
-    done >"$conf_db_file"
-    echo
+    ) | sed -e 's/^/|/g'  >"${conf_db_file}_${language_code}"
 }
 
 function _reset_sentence_db # raw_sentence_file
@@ -157,9 +147,46 @@ function _reset_sentence_db # raw_sentence_file
         <(cut -d'	' -f3 < "$raw_sentence_file")
 }
 
+function browser_curl # url
+{
+  debug_log "executing curl -s $1"
+  curl -s "$1" -H 'User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:84.0) Gecko/20100101 Firefox/84.0' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8' -H 'Accept-Language: en-US,en;q=0.5' --compressed -H 'DNT: 1' -H 'Connection: keep-alive' -H 'Upgrade-Insecure-Requests: 1'
+}
+
+function _download_and_gunzip # url
+{
+  browser_curl "$1" | gunzip -c
+}
+
+function _download_and_unzip # url file
+{
+  local file="$(mktemp -p "$conf_base_path/" "tmp_XXXX.zip")"
+  browser_curl "$1" > "$file"
+  unzip -p "$file" "$2"
+  rm "$file"
+}
+
+
+# dictionary must follow the same pattern as cc-cedict
+function _download_and_unzip_dict_if_not_present # language_code url [dl_function, [options]]
+{
+  local language_code="$1"
+  local url="$2"
+  local dl_fucntion="${3:-_download_and_gunzip}"
+  shift 3
+  local raw_dict_file="$conf_base_path/zh_${language_code}_raw_dict.txt"
+
+  if [ ! -e "$raw_dict_file" ]
+  then
+      log "Downloading the raw $language_code dict file as it does not exist..."
+      $dl_fucntion "$url" "$@" > "$raw_dict_file"
+  fi
+  _reset_word_db "$raw_dict_file" "$language_code"
+}
+
 function ext_cmd_make_db
 {
-    local raw_dict_file="$conf_base_path/cedict_1_0_ts_utf-8_mdbg.txt"
+    local raw_en_dict_file="$conf_base_path/cedict_1_0_ts_utf-8_mdbg.txt"
     local raw_sentence_file="$conf_base_path/sentence_raw_data.txt"
 
     # make sure stuff exists, even if empty:
@@ -174,30 +201,27 @@ function ext_cmd_make_db
     cache_init "$conf_tts_cache"
 
     [ ! -f "$main_rc_file" ] && _create_conf_file "$main_rc_file"
-    # make sure the source files exist:
-    if [ ! -e "$raw_dict_file" ]
-    then
-        log "Downloading the raw dict file as it does not exist..."
-        curl -s https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz | gunzip -c > "$raw_dict_file"
-    fi
+
+    # make sure the source files exist + reset the db files
+    _download_and_unzip_dict_if_not_present en https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.txt.gz
+    _download_and_unzip_dict_if_not_present fr https://chine.in/mandarin/dictionnaire/CFDICT/cfdict.zip _download_and_unzip "cfdict.u8"
     if [ ! -e "$raw_sentence_file" ]
     then
         log "Downloading the raw sentence list file as it does not exist..."
         # super shady link, pointing to a forum resource and all...
         # Skip the first line as it is not content
-        curl -s https://www.plecoforums.com/download/18-896-hsk-sentences-ascending-complexity-txt.2413/ | tail -n+2 | opencc -c s2tw.json > "$raw_sentence_file"
+        browser_curl https://www.plecoforums.com/download/18-896-hsk-sentences-ascending-complexity-txt.2413/ | tail -n+2 | opencc -c s2tw.json > "$raw_sentence_file"
     fi
 
     # download and strip the word frequency file if it does not exists:
     if [ ! -e "$conf_word_freq_list_file" ]
     then
         log "Downloading the word frequency file as it does not exist..."
-        curl -s "https://www.ugent.be/pp/experimentele-psychologie/en/research/documents/subtlexch/subtlexch131210.zip" | gunzip -c | tail -n+2 | cut -d'	' -f1 > "$conf_word_freq_list_file"
+        _download_and_gunzip "https://www.ugent.be/pp/experimentele-psychologie/en/research/documents/subtlexch/subtlexch131210.zip" | tail -n+2 | cut -d'	' -f1 > "$conf_word_freq_list_file"
     fi
 
     # clear the db file & reformat the raw db file:
     _reset_sentence_db "$raw_sentence_file"
-    _reset_word_db "$raw_dict_file"
 
     log done.
 }

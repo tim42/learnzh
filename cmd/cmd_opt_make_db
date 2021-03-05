@@ -1,4 +1,4 @@
-
+#!/bin/bash # just for automatic syntactic coloration purpose
 
 #usage_ext_cmd_make_db=""
 help_ext_cmd_make_db="Force the reset of the word db from the raw dict file"
