@@ -1,0 +1,7 @@
+#!/bin/bash # just for automatic syntactic coloration purpose
+
+#usage_ext_cmd_make_db=""
+help_ext_cmd_server="Start the webserver"
+
+cmd_opt_server_port=3300
+help_cmd_opt_server_port="The webserver port"

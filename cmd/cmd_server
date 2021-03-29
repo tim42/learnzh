@@ -1,0 +1,9 @@
+#!/bin/bash # just for automatic syntactic coloration purpose
+
+cmdcheck node
+
+function ext_cmd_server # (args)
+{
+  log "Starting web server..."
+  node "$this_directory/webserver/main.js" "$cmd_opt_server_port"
+}
