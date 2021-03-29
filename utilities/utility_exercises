@@ -13,6 +13,7 @@ function ex_filter_description # word
 
 function ex_match_descr # word [description-count]
 {
+    switch_keyboard_layout_to_default
     local word="$1"
     local max_descriptions=${2:-6}
 
@@ -42,7 +43,6 @@ function ex_match_descr # word [description-count]
     local descriptions="$(db_get_descriptions "$word" | ex_filter_description "$word")"
 
     local round_count=$((RANDOM % 2 + 3))
-    do_clear
 
     echo_notice "Excercise: Select whether or not the description matches the word."
     echo_notice "NOTE: there will $round_count rounds."
@@ -137,6 +137,7 @@ function ex_match_descr # word [description-count]
 
 function ex_match_character # word
 {
+    switch_keyboard_layout_to_default
     local word="$1"
 
     local match_regex="$( <<<"$word" sed -e 's/././g')"
@@ -166,8 +167,6 @@ function ex_match_character # word
 
     local entries="$( <<<"$entries" tr '|' '\n' | unsorted_uniq | shuf )"
 
-    do_clear
-
     echo_notice "Exercise: Match the corresponding character with the description"
     echo_notice "Number of entries: $(wc -l <<<"$entries")"
     echo_notice "Description:"
@@ -191,14 +190,8 @@ function ex_match_character # word
 
         local match='n'
         [ "$test_word" = "$word" ] && match='y'
-        local answer=
-        while [ "$answer" != 'y' ] && [  "$answer" != 'n' ]
-        do
-            read -p "Does ${const_color_blue}$test_word${const_format_reset} matches the description ? [y/n]: " -r answer
-            # mappings for zhuyin keyboard
-            [ "$answer" = 'ㄗ' ] && answer='y'
-            [ "$answer" = 'ㄙ' ] && answer='n'
-        done
+
+        local answer="$(y_or_n "Does ${const_color_blue}$test_word${const_format_reset} matches the description ?")"
 
         [ "$match" = "$answer" ] && echo_success 'Great !'
         [ "$match" = "$answer" ] ||
@@ -215,13 +208,12 @@ function ex_match_character # word
 # return 0 for success or 1 if it fails
 function ex_zhuyin # word
 {
+    switch_keyboard_layout_to_ㄅㄆㄇㄈ
     local word="$1"
     local zhuyin="$(db_get_zhuyin "$word")"
     local split_zhuyin="$( <<<"$zhuyin" tr '#' '\n' | trim)"
 
     [ -z "$zhuyin" ] && return 0
-
-    do_clear
 
     local const_max_tries=2
     echo_entry "Word: $word"
@@ -262,8 +254,7 @@ function ex_zhuyin # word
 
 function ex_enter_character_for_descr # word
 {
-    do_clear
-
+    switch_keyboard_layout_to_ㄅㄆㄇㄈ
     local word="$1"
     local const_max_tries=2
     echo_notice "Excercise: Enter the/a word that matches the description."
@@ -316,12 +307,7 @@ function ex_enter_character_for_descr # word
     echo
     format_word_info "$user_word"
 
-    local answer=
-    echo_entry "$line"
-    while [ "$answer" != 'y' ] && [  "$answer" != 'n' ]
-    do
-        read -p "Does this matches ? [y/n]: " -r answer
-    done
+    local answer="$(y_or_n "Does this matches ?")"
 
     [ "$answer" = 'y' ] &&
     {
@@ -336,10 +322,10 @@ function ex_enter_character_for_descr # word
 
 function ex_enter_descr_for_word # word
 {
+    switch_keyboard_layout_to_default
     local word="$1"
     local const_max_tries=2
 
-    do_clear
     echo_notice "Excercise: Enter a definition of the word."
     echo_notice "You have $const_max_tries tries."
     echo_entry "Word: $word"
@@ -407,11 +393,7 @@ function ex_enter_descr_for_word # word
     format_descriptions "$raw_descriptions"
     echo_notice "Here is what you entered: $user_input"
 
-    local answer=
-    while [ "$answer" != 'y' ] && [  "$answer" != 'n' ]
-    do
-        read -p "I require human assistance on here. Is what you entered correct ? [y/n]:" -r answer
-    done
+    local answer="$(y_or_n "I require human assistance on here. Is what you entered correct ?")"
 
     [ $answer == 'y' ] && echo_success "Great ! I'll trust you." && return 0
     echo_error "Then it's a failure"
@@ -435,6 +417,8 @@ function ex_learn_sentence # sentence
 {
     local sentence="${1}"
     [ -z "$sentence" ] && return 0
+
+    switch_keyboard_layout_to_ㄅㄆㄇㄈ
 
     local const_max_tries=7
     local const_success_tries=2
@@ -533,23 +517,23 @@ function ex_learn_word # word
     is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
     echo
     echo_notice "> Remember this word. When it's done, press enter. You'll be asked a few questions."
-    read -r __scratch
+    press_enter_to_continue
 
     # match the word:
     while ! ex_match_character "$word"
     do
         format_word_info "$word"
-        read -r __scratch -p "[press enter to continue]"
+        press_enter_to_continue
         do_clear
     done
 
     # re-enter the word you've just seen:
+    switch_keyboard_layout_to_ㄅㄆㄇㄈ
     do_clear
     local i=0
     while true
     do
         local new_word=
-
         is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
         read -p "Please enter the previous word: " -r new_word
         [ "$new_word" == "$word" ] && echo_success "Great !" && break
@@ -562,31 +546,34 @@ function ex_learn_word # word
         (( i > 2 )) &&
         {
             format_word_info "$word"
-            read -r __scratch -p "[press enter to continue]"
+            press_enter_to_continue
             do_clear
             i=0
         }
     done
 
     sleep 1
+    do_clear
 
     while ! ex_enter_descr_for_word "$word"
     do
         format_word_info "$word"
-        read -r __scratch -p "[press enter to continue]"
+        press_enter_to_continue
         do_clear
     done
 
     sleep 1
+    do_clear
 
     # match descriptions:
     while ! ex_match_descr $word
     do
         format_word_info "$word"
-        read -r __scratch -p "[press enter to continue]"
+        press_enter_to_continue
         do_clear
     done
     sleep 1
+    do_clear
 
     while ! ex_zhuyin $word
     do
@@ -696,6 +683,7 @@ function ex_test_word # word
     # do the exercise:
     ex_failure_score=$conf_ex_default_failure_cost
     local has_faillure=false
+    do_clear
     if $function "$word"
     then
         debug_log "exercise: success"
@@ -717,31 +705,75 @@ function ex_test_word # word
     # (( ${#word} > 1 )) && echo_notice "Composed of the following characters:" && print_word_characters_info "$word"
     echo
     is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
-    echo_notice "> [Press enter to continue]"
-    read -r __scratch
+    press_enter_to_continue
 
     # failure mode:
     if $has_faillure && $conf_ex_failure_trigger_more_learning
     then
+      do_clear
       while ! ex_enter_descr_for_word "$word"
       do
         format_word_info "$word"
-        echo_notice "> [Press enter to retry]"
-        read -r __scratch
+        press_enter_to_continue
+        do_clear
       done
+      do_clear
       while ! ex_zhuyin "$word"
       do
         format_word_info "$word"
-        echo_notice "> [Press enter to retry]"
-        read -r __scratch
+        press_enter_to_continue
+        do_clear
       done
 
+      do_clear
       echo
       format_word_info "$word"
       # (( ${#word} > 1 )) && echo_notice "Composed of the following characters:" && print_word_characters_info "$word"
       echo
       is_tts_enabled && tts_play cmn-TW Wavenet-A "這個字是「$word」。"
-      echo_notice "> [Press enter to continue]"
-      read -r __scratch
+      press_enter_to_continue
     fi
 }
+
+
+function ex_flashcard # word [has-success:false]
+{
+    local word="$1"
+    local has_success="${2:-false}"
+
+    # text header:
+    do_clear
+    echo
+    echo_notice "Flash card for 「$word」。"
+    echo
+    format_word_info "$word"
+    echo
+
+    # audio:
+    (
+      tts_play cmn-TW Wavenet-A "「$word」。"
+      sleep 0.3
+      tts_play cmn-TW Wavenet-A "「$word」。"
+      sleep 0.5
+      tts_play cmn-TW Wavenet-A "「$word」。"
+    ) &
+
+
+    # ex1: enter the word:
+    switch_keyboard_layout_to_ㄅㄆㄇㄈ
+    local line=
+    while [ "$line" != "$word" ]
+    do
+      read -e -p "Enter the character: " -r line
+    done
+
+    # ex2: enter a description:
+    do_clear
+    while ! ex_enter_descr_for_word "$word"
+    do
+      sleep 0.1;
+    done
+
+    $has_success && tdb_update_entry $word 1 0 $failure_score
+}
+

@@ -1,0 +1,16 @@
+#!/bin/bash # just for automatic syntactic coloration purpose
+
+function ext_cmd_api # (args)
+{
+  case "$cmd_opt_api_query" in
+    'info')
+      json_word_info "$*"
+      return 0
+    ;;
+    'tts-tw')
+      tts cmn-TW Wavenet-A "$*"
+      return 0
+    ;;
+  esac
+  return 2
+}

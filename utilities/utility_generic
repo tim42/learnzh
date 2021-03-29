@@ -1,3 +1,4 @@
+#!/bin/bash # just for automatic syntactic coloration purpose
 
 # a set of generic utilities
 
@@ -195,9 +196,46 @@ function pinyin_to_zhuyin
         value="$(cut -d'|' -f2 <<<"$str")"
         subst+=(-e"s/$key/$value/g;")
     done
-
-    perl -p "${subst[@]}" -e 's/(ㄐ|ㄑ|ㄒ)ㄨ/\1ㄩ/g;'
+    debug_log "${subst[@]}"
+    # the two first subst are because the fr-to-zh dict is kinda weird for ㄦ (it indicates them as 'r' not 'r5')
+    # so we normalize the input first then do the substitutions
+    perl -p -e 's/ r / r5 /g;' -e 's/ r$/ r5/g;'   "${subst[@]}"   -e 's/(ㄐ|ㄑ|ㄒ)ㄨ/\1ㄩ/g;'
 }
+
+help_conf_change_keyboard_layout="Whether fcitx5 will be asked to change the keyboard layout"
+conf_change_keyboard_layout=false
+boolean_conf_change_keyboard_layout=
+
+function switch_keyboard_layout_to_ㄅㄆㄇㄈ
+{
+    $conf_change_keyboard_layout || return
+    fcitx5-remote -o
+}
+function switch_keyboard_layout_to_default
+{
+    $conf_change_keyboard_layout || return
+    fcitx5-remote -c
+}
+
+function y_or_n # question
+{
+    local answer=
+    while [ "$answer" != 'y' ] && [ "$answer" != 'n' ]
+    do
+      read -p "$1 [y/n]: " -r answer
+      # mappings for zhuyin keyboard
+      [ "$answer" = 'ㄗ' ] && answer='y'
+      [ "$answer" = 'ㄙ' ] && answer='n'
+    done
+    echo $answer
+}
+
+function press_enter_to_continue
+{
+  local __scratch=
+  read -p "[press enter to continue]" -r __scratch
+}
+
 
 function format_descriptions # descr
 {
@@ -248,6 +286,34 @@ function format_word_info # word, [extended-info:false]
         echo '  --------------- '
         wiktionary_format_example <<<"$wex"
     }
+}
+
+function json_word_info # word
+{
+    local word="$1"
+
+    [ -z "$word" ] && return
+
+    echo '{'
+    echo '"entries":['
+    local line=
+    local i=0
+    db_get_word_info "$word" | while read -r line
+    do
+        local zhuyin="$(db_get_zhuyin_from_input <<<"$line")"
+        local descriptions="$(db_get_descriptions_from_input <<<"$line")"
+        local descr_line_count=$(wc -l <<<"$descriptions")
+        ((i > 0)) && echo ','
+        let ++i
+        echo -n "{\"word\":$(json_str "$word"),\"zhuyin\":$(json_str "$zhuyin"),\"description\":$(json_str "$descriptions")}"
+    done
+    echo ']'
+    echo '}'
+}
+
+function json_str # str
+{
+  jq -Rs . <<<"$1"
 }
 
 # single-line word info

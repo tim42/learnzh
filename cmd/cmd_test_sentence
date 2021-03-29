@@ -36,13 +36,13 @@ function ext_cmd_test_sentence
     is_tts_enabled || die 3 'TTS support is required for this to work'
 
     #max: 18897
-    local sentence_count=7000
-    local matching_pct=70
+    local sentence_count=8000
+    local matching_pct=${cmd_opt_test_sentence_match}
 
     log "selecting sentences with at least $matching_pct% known words (in the first $sentence_count sentences)"
     local matching_sentences="$(st_read_file 1 $sentence_count | _get_sentences $matching_pct $sentence_count)" 5>&1
     log "found $(wc -l <<<"$matching_sentences") compatible sentences"
-    sleep 1
+    press_enter_to_continue
 
     while true
     do

@@ -40,6 +40,19 @@ function ext_cmd_test
     local word=
     local fnc=
 
+    if (( cmd_opt_test_flash_cards > 0 ))
+    then
+        local i=0
+        debug_log "doing some flash-cards..."
+        for word in $(tdb_sort_by_most_difficult 50)
+        do
+            debug_log "flash-card word: $word"
+            ex_flashcard "$word" $cmd_opt_test_flash_cards_have_successes
+            (( ++i >= cmd_opt_test_flash_cards )) && break
+        done
+    fi
+
+    debug_log "doing the main test..."
     while true
     do
         fnc=$(cmd_test_get_sort_mode)
@@ -48,7 +61,12 @@ function ext_cmd_test
         for word in $($fnc | head -n $cmd_opt_test_round_size | shuf)
         do
             debug_log "word: $word"
-            ex_test_word "$word"
+            if $cmd_opt_test_only_flash_cards
+            then
+                ex_flashcard "$word" $cmd_opt_test_flash_cards_have_successes
+            else
+                ex_test_word "$word"
+            fi
         done
     done
 }

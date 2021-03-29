@@ -1,3 +1,4 @@
+#!/bin/bash # just for automatic syntactic coloration purpose
 
 ## Perform TTS using the google-cloud service
 ## It requires a specific file to be set that acts as an auth key for the services

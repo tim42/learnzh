@@ -17,6 +17,16 @@ help_cmd_opt_test_random_score="Proportional score of the 'most failed' sort mod
 cmd_opt_test_default_sort_score=30
 help_cmd_opt_test_random_score="Proportional score of the default sort mode"
 
+cmd_opt_test_flash_cards=5
+help_cmd_opt_test_flash_cards="Start the test mode by some flash cards (the option indicates the number of cards)"
+
+cmd_opt_test_only_flash_cards=false
+help_cmd_opt_test_only_flash_cards="replace the exercises with flashcards."
+boolean_cmd_opt_test_only_flash_cards=
+
+cmd_opt_test_flash_cards_have_successes=true
+help_cmd_opt_test_only_flash_cards="Whether or not completing a flashcard will be marked as a success for the word."
+boolean_cmd_opt_test_flash_cards_have_successes=
 
 #usage_ext_cmd_test=
 help_ext_cmd_test="Run the test mode"

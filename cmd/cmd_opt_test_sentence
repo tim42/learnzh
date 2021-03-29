@@ -1,6 +1,9 @@
 
 cmd_opt_test_sentence_round_size=7
-help_cmd_opt_test_sentence_round_size="Size of a round before re-choosing new random words"
+help_cmd_opt_test_sentence_round_size="Size of a round before re-choosing new random sentences"
+
+cmd_opt_test_sentence_match=60
+help_cmd_opt_test_sentence_match="Percentage of words that have to be known in a sentence"
 
 #usage_ext_cmd_test_sentence=""
 help_ext_cmd_test_sentence="Run the test mode for sentences"

@@ -1,3 +1,4 @@
+#!/bin/bash # just for automatic syntactic coloration purpose
 
 # utilities related to the test DB
 conf_test_db_file="$conf_base_path/test_db" # file where tests will be stored. format: word|try_count|-fail_count|consecutive_successes|last_success_timestamp
@@ -117,4 +118,26 @@ function tdb_sort_by_most_failed
 function tdb_shuf_words
 {
     tdb_read | shuf | cut -d'|' -f$const_tdb_word
+}
+
+# output the word list with the one in front the ones the user has the most difficulty with
+function tdb_sort_by_most_difficult # [cut-at: 100]
+{
+  local cut_at="${1:-100}"
+  local const_target_cons_successes=5
+
+  tdb_read | {
+    local line=
+    local score=
+    while read -r line
+    do
+      local tries="$(<<<"$line" cut -d'|' -f$const_tdb_try_count)"
+      local fails="$(<<<"$line" cut -d'|' -f$const_tdb_fail_count)"
+      local cons_successes="$(<<<"$line" cut -d'|' -f$const_tdb_consecutive_successes)"
+      local target_cons_successes=$((tries < const_target_cons_successes ? tries : const_target_cons_successes))
+      score="$(( ((100 - (const_tdb_big_nmuber - fails) * 100 / tries) * (cons_successes - target_cons_successes)) / 10 ))"
+
+      ((score < cut_at)) && echo "$score|$line"
+    done
+  } | sort -n | cut -d'|' -f$((const_tdb_word + 1))
 }

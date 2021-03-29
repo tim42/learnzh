@@ -1,0 +1,7 @@
+#!/bin/bash # just for automatic syntactic coloration purpose
+
+#usage_ext_cmd_make_db=""
+help_ext_cmd_api="API for scripts. Only output json."
+
+cmd_opt_api_query="info"
+help_cmd_opt_api_query="Can be 'info' (dict lookup, return json), 'tts-tw' (return raw mp3 file)"
