@@ -5,13 +5,12 @@ if (!get_storage().text_study)
 {
   get_storage().text_study =
   {
-    text: "",
-    
+    text: null,
   };
 }
 
 // return an array (one entry per line) containing arrays (one entry per sentence fragment)
-function get_split_text(text)
+function get_split_text(text, title)
 {
   let lines = text.split('\n');
   let ret = [];
@@ -19,7 +18,7 @@ function get_split_text(text)
   {
     ret.push({line: e.split(/([，；、。「」？！：“”《》『』〝〞…,.;:?!()\[\]])/g), words:{}, notes:''});
   });
-  return ret;
+  return { title: lines[0], original_text: text, split_text: ret };
 }
 
 window.App.Content =
@@ -32,7 +31,7 @@ window.App.Content =
 
         this.state =
         {
-          text: get_split_text(get_storage().text_study.text),
+          text: get_storage().text_study.text,
           in_set_text_mode: !get_storage().text_study.text,
 
           selected_text: '',
@@ -47,8 +46,8 @@ window.App.Content =
 
       set_text(text)
       {
-        get_storage().text_study.text = text;
-        this.setState({text: get_split_text(text)});
+        get_storage().text_study.text = get_split_text(text);
+        this.setState({text: get_storage().text_study.text});
       }
 
       handle_selection(e, line_index)
@@ -69,7 +68,7 @@ window.App.Content =
         this.setState((state, props) =>
         {
           let new_text = state.text;
-          new_text[state.selected_line_index].words[text] = text;
+          new_text.split_text[state.selected_line_index].words[text] = text;
           return { text: new_text };
         });
       }
@@ -86,39 +85,42 @@ window.App.Content =
               <hr />
               <p>Please enter the text:</p>
               <ReactBootstrap.Form>
-                <ReactBootstrap.Form.Control as='textarea' onChange={(e) => this.set_text(e.target.value)} rows={10}  value={this.state.text}/>
+                <ReactBootstrap.Form.Control as='textarea' onChange={(e) => this.set_text(e.target.value)} rows={10}  value={this.state.text?.original_text || ''}/>
                 <ReactBootstrap.Button className="btn-block" variant="primary" onClick={() => this.toggle_set_text(false)}>Apply</ReactBootstrap.Button>
               </ReactBootstrap.Form>
             </div>
           );
         }
 
-        let split_text = this.state.text;
+        let split_text = this.state.text.split_text;
         return (
           <div>
             <h1>
-              Text Study
+              Text Study&nbsp;
+              <span className="badge badge-secondary">{this.state.text?.title || ''}</span>
               <ReactBootstrap.Button variant="secondary" className="float-right" onClick={() => this.toggle_set_text(true)}><i className="fas fa-edit"></i> Set Text</ReactBootstrap.Button>
             </h1>
             <hr />
             <div className="row">
               <div className="col-8">
-                {split_text.map((e, i) =>
-                  <div>
-                    <div className="lead" onMouseUp={(e)=>this.handle_selection(e, i)} onDoubleClick={(e)=>this.handle_selection(e, i)}>
-                      {e.line.map((e) =>
-                        <App.Content.TextStudy.TextEntry onClick={(text) => this.set_selected_text(text, i)} text={e} />
+                {split_text.map((e, line_index) =>
+                  <div key={line_index}>
+                    <div className="lead" onMouseUp={(e)=>this.handle_selection(e, line_index)} onDoubleClick={(e)=>this.handle_selection(e, line_index)}>
+                      {e.line.map((e, idx) =>
+                        <App.Content.TextStudy.TextEntry key={idx} onClick={(text) => this.set_selected_text(text, line_index)} text={e} />
                       )}
                     </div>
                   { Object.keys(e.words).length ? <span></span> : <br/> }
-                  {Object.keys(e.words).map((e) =>
-                      <App.Content.TextStudy.Definition word={e} short/>
-                  )}
+                  <div className="zh-darker">
+                    {Object.keys(e.words).map((e, idx) =>
+                        <App.Content.TextStudy.Definition key={idx} word={e} short/>
+                    )}
                   </div>
+                </div>
                 )}
               </div>
               <div className="col-4 zh-darker">
-                <App.Content.TextStudy.Tooltip text={this.state.selected_text} pin_definition={(t) => this.pin_definition(t)}/>
+                { this.state.selected_text && <App.Content.TextStudy.Tooltip text={this.state.selected_text} pin_definition={(t) => this.pin_definition(t)}/> }
               </div>
             </div>
           </div>
@@ -171,17 +173,17 @@ window.App.Content.TextStudy.Definition = class extends React.Component
       has_definition: false,
       definition: null,
     };
-    this.do_query({word:null});
+    this.do_query({word:null}, true);
   }
 
-  do_query(prevProps)
+  do_query(prevProps, skip_initial_state)
   {
     if (prevProps.word == this.props.word)
       return;
     if (!this.props.word)
       return;
 
-    this.setState({loading:true, has_definition: false, definition: null});
+    skip_initial_state || this.setState({loading:true, has_definition: false, definition: null});
 
     fetch_file_content(`/api/info/${this.props.word}`).then((response) => response.text()).then((text) =>
     {
@@ -202,6 +204,11 @@ window.App.Content.TextStudy.Definition = class extends React.Component
           definition_json: null
         });
     });
+  }
+
+  handle_play()
+  {
+    new Audio(`/api/tts/${this.props.word}`).play()
   }
 
   componentDidUpdate(prevProps)
@@ -228,10 +235,10 @@ window.App.Content.TextStudy.Definition = class extends React.Component
       if (this.props.short)
       {
         return (
-          <span>{this.state.definition_json.entries.map((e) =>
-            <dl className="row" style={{margin:"0px"}}>
-              <dt className="col-sm-2 lead"><span className="badge badge-secondary">{e.word}</span><span className="badge badge-success">{e.zhuyin}</span></dt>
-              <dd className="col-sm-10"><ul style={{margin:"0px"}} className="list-inline">{e.description.split('\n').map((e) => <li className="list-inline-item">{e}</li>)}</ul></dd>
+          <span>{this.state.definition_json.entries.map((e, idx) =>
+            <dl key={idx} className="row" style={{margin:"0px"}}>
+              <dt className="col-sm-3 lead" onClick={()=>this.handle_play()}><span className="badge badge-secondary">{e.word}</span><span className="badge badge-success">{e.zhuyin}</span></dt>
+              <dd className="col-sm-9"><ul style={{margin:"0px"}} className="list-inline">{e.description.split('\n').map((e, idx) => <li key={idx} className="list-inline-item">{e}</li>)}</ul></dd>
             </dl>
           )}</span>
         );
@@ -239,10 +246,10 @@ window.App.Content.TextStudy.Definition = class extends React.Component
       else
       {
         return (
-          <span>{this.state.definition_json.entries.map((e) =>
-            <div className="text-left">
-              <div className="lead"><b><span className="badge badge-secondary">{e.word}</span><span className="badge badge-success">{e.zhuyin}</span></b></div>
-              <div><ul>{e.description.split('\n').map((e) => <li>{e}</li>)}</ul></div>
+          <span>{this.state.definition_json.entries.map((e, idx) =>
+            <div key={idx} className="text-left">
+              <div className="lead" onClick={()=>this.handle_play()}><b><span className="badge badge-secondary">{e.word}</span><span className="badge badge-success">{e.zhuyin}</span></b></div>
+              <div><ul>{e.description.split('\n').map((e, idx) => <li key={idx}>{e}</li>)}</ul></div>
             </div>
           )}</span>
         );
