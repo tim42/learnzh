@@ -1,5 +1,84 @@
 #!/bin/bash # just for automatic syntactic coloration purpose
 
+function sanitize_filename # name
+{
+  local name="$1"
+  tr './' '__' <<<"$name"
+}
+
+function create_entry # target, file, title  0>data
+{
+  local target="$(sanitize_filename "$1")"
+  local file="$2"
+  local title="$( <<<"$3" tr '|' '_')"
+  local data_dir="$conf_base_path/data/$target"
+
+  mkdir -p "$data_dir"
+  [ ! -e "$data_dir/db" ] && echo '0' > "$data_dir/db"
+  [ ! -e "$data_dir/.lock" ] && echo > "$data_dir/.lock"
+
+  (
+    flock -x 10
+    local id="$(( $(head -n1 "$data_dir/db") + 1))"
+    sed -i "1s/.*/${id}/" "$data_dir/db"
+
+    mv "$file" "$data_dir/${id}.data"
+    cat > "$data_dir/${id}.json"
+
+    echo "$id|$(json_str "$title")" >> "$data_dir/db"
+    echo -n "$id"
+  ) 10>"$data_dir/.lock"
+}
+
+function delete_entry # target, id
+{
+  local target="$(sanitize_filename "$1")"
+  local id="$(sanitize_filename "$2")"
+  local data_dir="$conf_base_path/data/$target"
+
+  [ ! -f "$data_dir/db" ] && return
+
+  (
+    flock -x 10
+
+    [ ! -f "$data_dir/$id.json" ] && return
+    rm "$data_dir/$id.json" "$data_dir/$id.data"
+    sed -n -i "/^$id[|]/!p" "$data_dir/db"
+  ) 10>"$data_dir/.lock"
+}
+
+function list_entries # target
+{
+  local target="$(sanitize_filename "$1")"
+  local data_dir="$conf_base_path/data/$target"
+
+  [ ! -f "$data_dir/db" ] && { echo '[]' ; return ; }
+
+  (
+    flock -x 10
+
+    echo '['
+    tail -n+2 "$data_dir/db" | awk -F'|' '{ printf "{\"id\":\"%s\", \"title\":%s},", $1, $2}'
+    echo '{} ]'
+  ) 10>"$data_dir/.lock"
+}
+
+function update_entry # target, id    0>data
+{
+  local target="$(sanitize_filename "$1")"
+  local id="$(sanitize_filename "$2")"
+  local data_dir="$conf_base_path/data/$target"
+
+  [ ! -f "$data_dir/db" ] && { echo '{ "status": "db does not exist", "success":false}' ; return ; }
+  (
+    flock -x 10
+
+    [ ! -f "$data_dir/$id.json" ] && { echo '{ "status": "invalid ID", "success":false}' ; return ; }
+    cat > "$data_dir/$id.json"
+    echo '{ "status": "success", "success":true}'
+  ) 10>"$data_dir/.lock"
+}
+
 function ext_cmd_api # (args)
 {
   case "$cmd_opt_api_query" in
@@ -7,8 +86,32 @@ function ext_cmd_api # (args)
       json_word_info "$*"
       return 0
     ;;
+
     'tts-tw')
       tts cmn-TW Wavenet-A "$*"
+      return 0
+    ;;
+
+    'get-conf')
+      local var="$*"
+      echo -n "${!var}"
+      return 0
+    ;;
+
+    'create_entry')
+      create_entry "$1" "$2" "$3"
+      return 0
+    ;;
+    'list_entries')
+      list_entries "$1"
+      return 0
+    ;;
+    'update_entry')
+      update_entry "$1" "$2" "$3"
+      return 0
+    ;;
+    'delete_entry')
+      delete_entry "$1" "$2"
       return 0
     ;;
   esac

@@ -14,19 +14,21 @@
   <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootswatch/4.5.2/superhero/bootstrap.min.css" integrity="sha384-HnTY+mLT0stQlOwD3wcAzSVAZbrBp141qwfR4WfTqVQKSgmcgzk+oP0ieIyrxiFO" crossorigin="anonymous">
 
   <!-- reactJS -->
-  <script crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+  <script defer crossorigin src="https://unpkg.com/react@17/umd/react.development.js"></script>
+  <script defer crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
   <!--  <script crossorigin src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>-->
 
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/react-router-dom/5.2.0/react-router-dom.min.js" integrity="sha512-NG4Cm3Ubs7d/nPyzrTFM53RP8tPjQhRT0hea48yJ/qEXsuhq7wGbjX68A5gBiW6BoCQbqE3/M+UOj2lLXPauhw==" crossorigin="anonymous"></script>
+
   <!-- react plugins -->
-  <script crossorigin src="https://unpkg.com/react-bootstrap@next/dist/react-bootstrap.min.js"></script>
+  <script defer crossorigin src="https://unpkg.com/react-bootstrap@1.5.2/dist/react-bootstrap.min.js"></script>
 
   <!-- babelJS -->
   <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
   <!-- app scripts -->
-  <script type="application/javascript" src="loader.js"></script>
+  <script type="module" src="loader.js"></script>
 </head>
 
 <body>
@@ -34,8 +36,10 @@
   <p>Please use the webserver.</p>
 </body>
 
-<script>
-  load_js_file('app.js');
+<script type="module">
+  import * as Loader from './loader.js';
+
+  Loader.load_js_file('./app.js');
 </script>
 
 </html>

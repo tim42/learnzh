@@ -191,6 +191,8 @@ function ext_cmd_make_db
 
     # make sure stuff exists, even if empty:
     mkdir -p "$conf_base_path"
+    mkdir -p "$conf_base_path/data"
+    mkdir -p "$conf_base_path/upload"
 
     # touch, not remove (so... you don't end-up paying a high price a mistake)
     touch "$conf_test_db_file"

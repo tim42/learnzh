@@ -4,4 +4,4 @@
 help_ext_cmd_api="API for scripts. Only output json."
 
 cmd_opt_api_query="info"
-help_cmd_opt_api_query="Can be 'info' (dict lookup, return json), 'tts-tw' (return raw mp3 file)"
+help_cmd_opt_api_query="Can be 'info' (dict lookup, return json), 'tts-tw' (return raw mp3 file), 'get-conf' (print to stdout the value of a conf var), '{create,list,update}_entries' do stuff with uploaded data"
