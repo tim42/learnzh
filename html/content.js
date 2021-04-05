@@ -33,11 +33,20 @@ import * as Loader from '###LOADER_MODULE_URL###';
     constructor(props)
     {
       super(props);
+      this.state =
+      {
+        has_definition: false,
+      };
     }
 
     handle_play()
     {
       new Audio(`/api/tts/${this.props.text}`).play()
+    }
+
+    has_definition(v)
+    {
+      this.setState({has_definition: v});
     }
 
     render()
@@ -47,13 +56,16 @@ import * as Loader from '###LOADER_MODULE_URL###';
           <div>
             <span className="lead">{this.props.text}&nbsp;</span>
           </div>
-          <div>
-            <ReactBootstrap.Button className="btn-block" variant="secondary" onClick={() => this.handle_play()}><i className="fas fa-play"></i></ReactBootstrap.Button>
-          </div>
           <hr />
           <div>
-            <UiElements.Definition word={this.props.text} />
-            {this.props.pin_definition && <ReactBootstrap.Button className="btn-block" variant="secondary" onClick={() => this.props.pin_definition(this.props.text)}><i className="fas fa-thumbtack"></i> Pin Definition</ReactBootstrap.Button> }
+            <ReactBootstrap.Button className="btn-block" variant="secondary" onClick={() => this.handle_play()}><i className="fas fa-play"></i> Play TTS</ReactBootstrap.Button>
+          </div>
+          <div>
+          <hr />
+            <UiElements.Definition word={this.props.text} has_definition={(v)=>this.has_definition(v)}/>
+            {this.state.has_definition && this.props.pin_definition &&
+                <ReactBootstrap.Button className="btn-block" variant="secondary" onClick={() => this.props.pin_definition(this.props.text)}><i className="fas fa-thumbtack"></i> Pin Definition</ReactBootstrap.Button>
+            }
           </div>
         </div>
       );
@@ -240,23 +252,89 @@ import * as Loader from '###LOADER_MODULE_URL###';
         <div>
           <h1>
             Text Study List:
-            <ReactRouterDOM.Link className="btn btn-secondary float-right" to={'/text-study/create'} role="button"><i className="fas fa-plus"></i> Create New</ReactRouterDOM.Link>
+            <ReactRouterDOM.Link className="btn btn-secondary float-right" to={'/text-study/create'} role="button"><i className="fas fa-plus-square"></i> Create New</ReactRouterDOM.Link>
           </h1>
-          {this.state.list.map((elem) =>
-            <div className="row" key={elem.id}>
-              <ReactRouterDOM.Link className="col-11 btn btn-block btn-secondary" to={`/text-study/page/${elem.id}`}>{elem.title}</ReactRouterDOM.Link>
-              <ReactBootstrap.Button className="col-1 btn-block" variant="danger" onClick={() => this.delete_entry(elem.id)}><i className="fas fa-minus"></i></ReactBootstrap.Button>
-            </div>
-          )}
+          <UiElements.ManagedList className="zh-darker" style={{marginBottom:'5px'}} deletable on_delete={(elem) => this.delete_entry(elem.id)} list={this.state.list} element={(elem, index) =>
+            (<ReactRouterDOM.Link className="btn btn-block btn-secondary" to={`/text-study/page/${elem.id}`}>{elem.title}</ReactRouterDOM.Link>)
+            } />
 
           { (this.state.list.length == 0) &&
             <div className="alert alert-info" role="alert">
               <div className="jumbotron">
                 <p>Looks like it's empty in there. You may want to add a new entry.</p>
-                <ReactRouterDOM.Link className="btn btn-info btn-block" to={'/text-study/create'} role="button"><i className="fas fa-plus"></i> Create New</ReactRouterDOM.Link>
+                <ReactRouterDOM.Link className="btn btn-info btn-block" to={'/text-study/create'} role="button"><i className="fas fa-plus-square"></i> Create New</ReactRouterDOM.Link>
               </div>
             </div>
           }
+        </div>
+      );
+    }
+  };
+
+  // props:
+  //  - handle_selection (event, index)
+  //  - set_selected_text (event)
+  //  - line (the line object)
+  //  - line_data_changed : function (line_object, line_index)
+  Utils.LineEntry = class extends React.Component
+  {
+    delete_definition(word)
+    {
+      let line = this.props.line;
+      delete line.words[word];
+      this.props.line_data_changed(this.props.line, this.props.line_index);
+      this.state = { dummy: 0 };
+    }
+
+    toggle_play_line()
+    {
+      if (this.props.audio_player_ref.current.paused || this.props.audio_player_ref.current.currentTime < this.props.line.audio_start)
+      {
+        this.props.audio_player_ref.current.currentTime = this.props.line.audio_start;
+        this.props.audio_player_ref.current.play();
+      }
+      else
+      {
+        this.props.audio_player_ref.current.pause();
+      }
+    }
+
+    pause()
+    {
+    }
+
+    set_audio_start()
+    {
+      let line = this.props.line;
+      line.audio_start = this.props.audio_player_ref.current.currentTime;
+      this.props.line_data_changed(this.props.line, this.props.line_index);
+    }
+
+    render()
+    {
+      if (this.props.line.line.length <= 1)
+        return (<br/>);
+
+      return (
+        <div>
+          <div className="lead row" onMouseUp={(e)=>this.props.handle_selection(e)} onDoubleClick={(e)=>this.props.handle_selection(e)}>
+            <div className="col-2">
+              <ReactBootstrap.Button variant="secondary" onClick={() => this.toggle_play_line()}><i className="fas fa-play"></i><i className="fas fa-pause"></i></ReactBootstrap.Button>
+              {' '}
+              {this.props.show_config && <ReactBootstrap.Button variant="secondary" onClick={() => this.set_audio_start()}><i className="fas fa-thumbtack"></i></ReactBootstrap.Button>}
+            </div>
+            <div className="col-10">
+              <UiElements.List list={this.props.line.line} element={(elem, index) => 
+                (<Utils.TextEntry text={elem} onClick={(e)=>this.props.set_selected_text(e)}/>)
+              } />
+            </div>
+          </div>
+          { Object.keys(this.props.line.words).length ? <span></span> : <br/> }
+          <div className="zh-darker">
+            <UiElements.ManagedList deletable={this.props.show_config} on_delete={(elem) => this.delete_definition(elem)} list={Object.keys(this.props.line.words)} element={(elem, index) =>
+              (<UiElements.Definition word={elem} short/>)
+              } />
+          </div>
         </div>
       );
     }
@@ -274,6 +352,8 @@ import * as Loader from '###LOADER_MODULE_URL###';
 
         text: null,
         is_loading: true,
+
+        show_config: false,
 
         selected_text: '',
         selected_line_index: 0,
@@ -297,6 +377,11 @@ import * as Loader from '###LOADER_MODULE_URL###';
       });
     }
 
+    toggle_config()
+    {
+      this.setState((state) => ({show_config: !state.show_config}));
+    }
+
     save()
     {
       Loader.put_file_content(`/api/data/update_entry/text-study/${this.state.id}`, JSON.stringify(this.state.text));
@@ -305,6 +390,22 @@ import * as Loader from '###LOADER_MODULE_URL###';
     rewind(at)
     {
       this.audio_player_ref.current.currentTime = at;
+    }
+
+    set_audio_start(line)
+    {
+      if (line === null)
+      {
+        const now = this.audio_player_ref.current.currentTime;
+        this.setState((state, props) => 
+        {
+          state.text.audio_start = now;
+          return state;
+        });
+      }
+      else
+      {
+      }
     }
 
     handle_selection(e, line_index)
@@ -330,6 +431,15 @@ import * as Loader from '###LOADER_MODULE_URL###';
       });
     }
 
+    line_data_changed(line, line_index)
+    {
+      this.setState((state) =>
+      {
+        state.text.split_text[line_index] = line;
+        return state;
+      });
+    }
+
     render()
     {
       if (this.state.is_loading)
@@ -347,30 +457,35 @@ import * as Loader from '###LOADER_MODULE_URL###';
           <h1>
             Text Study&nbsp;
             <span className="badge badge-secondary">{this.state.text?.title || ''}</span>
-            <ReactBootstrap.Button variant="secondary" className="float-right" onClick={() => this.save()}><i className="fas fa-save"></i> Save</ReactBootstrap.Button>
+            <span className="float-right" >
+              <ReactBootstrap.Button variant="secondary" onClick={() => this.toggle_config()}><i className="fas fa-cog"></i></ReactBootstrap.Button>
+              {' '}
+              <ReactBootstrap.Button variant="primary" onClick={() => this.save()}><i className="fas fa-save"></i> Save</ReactBootstrap.Button>
+            </span>
           </h1>
           <hr />
-          <audio ref={this.audio_player_ref} controls src={`/data/text-study/${this.state.id}.data`} />
-          <ReactBootstrap.Button variant="secondary" onClick={() => this.rewind(this.state.text.audio_start)}><i className="fas fa-step-backward"></i></ReactBootstrap.Button>
 
+          <div className="row">
+            <div ><audio ref={this.audio_player_ref} controls src={`/data/text-study/${this.state.id}.data`} preload={"true"} /></div>
+
+            <div className="col-8">
+              <ReactBootstrap.Button variant="info" onClick={() => this.rewind(this.state.text.audio_start)}><i className="fas fa-step-backward"></i> Rewind</ReactBootstrap.Button>
+              {' '}
+              {this.state.show_config && <ReactBootstrap.Button variant="secondary" onClick={() => this.set_audio_start(null)}><i className="fas fa-thumbtack"></i> Set start to now</ReactBootstrap.Button>}
+            </div>
+          </div>
           <hr />
           <div className="row">
             <div className="col-8">
-              {split_text.map((e, line_index) =>
-                <div key={line_index}>
-                  <div className="lead" onMouseUp={(e)=>this.handle_selection(e, line_index)} onDoubleClick={(e)=>this.handle_selection(e, line_index)}>
-                    {e.line.map((e, idx) =>
-                      <Utils.TextEntry key={idx} onClick={(text) => this.set_selected_text(text, line_index)} text={e} />
-                    )}
-                  </div>
-                { Object.keys(e.words).length ? <span></span> : <br/> }
-                <div className="zh-darker">
-                  {Object.keys(e.words).map((e, idx) =>
-                      <UiElements.Definition key={idx} word={e} short/>
-                  )}
-                </div>
-              </div>
-              )}
+              <UiElements.List list={split_text} element={(elem, line_index) =>
+                (<Utils.LineEntry line={elem}
+                  line_data_changed={(l, i)=>this.line_data_changed(l, line_index)}
+                  handle_selection={(e, i)=>this.handle_selection(e, line_index)}
+                  set_selected_text={(e)=>this.set_selected_text(e, line_index)}
+                  show_config={this.state.show_config}
+                  audio_player_ref={this.audio_player_ref}
+                />)
+              }/>
             </div>
             <div className="col-4 zh-darker">
               { this.state.selected_text && <Utils.Tooltip text={this.state.selected_text} pin_definition={(t) => this.pin_definition(t)}/> }
@@ -381,15 +496,10 @@ import * as Loader from '###LOADER_MODULE_URL###';
     }
   }
 
-  class TextStudy extends React.Component
+  class TextStudyRouter extends React.Component
   {
-    constructor(props)
-    {
-      super(props);
-    }
     render()
     {
-
       return (
         <div>
           <ReactRouterDOM.Switch>
@@ -405,6 +515,6 @@ import * as Loader from '###LOADER_MODULE_URL###';
   // register the routes:
   import(Loader.get_module('./app.js')).then((App) =>
   {
-    App.Routes.add_route('text study', '/text-study', TextStudy);
+    App.Routes.add_route('text study', '/text-study', TextStudyRouter);
   });
 })();
