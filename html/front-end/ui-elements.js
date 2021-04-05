@@ -89,7 +89,7 @@ export let Definition = class extends React.Component
           <span>{this.state.definition_json.entries.map((e, idx) =>
             <dl key={idx} className="row" style={{margin:"0px"}}>
               <dt className="col-sm-3 lead" onClick={()=>this.handle_play()}><span className="badge badge-secondary">{e.word}</span><span className="badge badge-success">{e.zhuyin}</span></dt>
-              <dd className="col-sm-9"><ul style={{margin:"0px"}} className="list-inline">{remove_last_element(e.description.split('\n')).map((e, idx) => <li key={idx} className="list-inline-item">{e}</li>)}</ul></dd>
+              <dd className="col-sm-9"><ul style={{margin:"0px"}} className="list-inline">{remove_last_element(e.description.split('\n')).map((e, idx) => <li key={idx} className="list-inline-item border border-secondary px-1">{e}</li>)}</ul></dd>
             </dl>
           )}</span>
         );

@@ -52,7 +52,7 @@ import * as Loader from '###LOADER_MODULE_URL###';
     render()
     {
       return (
-        <div>
+        <div className="sticky-top pt-2">
           <div>
             <span className="lead">{this.props.text}&nbsp;</span>
           </div>
@@ -157,6 +157,21 @@ import * as Loader from '###LOADER_MODULE_URL###';
       });
     }
 
+    normalize_text()
+    {
+      this.setState((state) =>
+      {
+        let text = state.text;
+        text = text.replaceAll(/…+/g, '…')
+            .replaceAll(/…/g, '…\n')
+            .replaceAll(/。/g, '。\n')
+            .replaceAll(/；/g, '；\n')
+            .replaceAll(/([\r\n]){2,}/g, '\n\n')
+        ;
+        return {text: text};
+      });
+    }
+
     render()
     {
       if (this.state.is_creating)
@@ -187,6 +202,7 @@ import * as Loader from '###LOADER_MODULE_URL###';
 
             <ReactBootstrap.Form.Label>Text:</ReactBootstrap.Form.Label>
             <ReactBootstrap.Form.Control as='textarea' onChange={(e) => this.setState({text: e.target.value})} rows={10}  value={this.state.text || ''} placeholder="Content"/>
+            <ReactBootstrap.Button className="btn-block" variant="secondary" onClick={() => this.normalize_text()}>Normalize text</ReactBootstrap.Button>
 
             <hr />
 
@@ -254,7 +270,7 @@ import * as Loader from '###LOADER_MODULE_URL###';
             Text Study List:
             <ReactRouterDOM.Link className="btn btn-secondary float-right" to={'/text-study/create'} role="button"><i className="fas fa-plus-square"></i> Create New</ReactRouterDOM.Link>
           </h1>
-          <UiElements.ManagedList className="zh-darker" style={{marginBottom:'5px'}} deletable on_delete={(elem) => this.delete_entry(elem.id)} list={this.state.list} element={(elem, index) =>
+          <UiElements.ManagedList className="zh-darker mb-1" deletable on_delete={(elem) => this.delete_entry(elem.id)} list={this.state.list} element={(elem, index) =>
             (<ReactRouterDOM.Link className="btn btn-block btn-secondary" to={`/text-study/page/${elem.id}`}>{elem.title}</ReactRouterDOM.Link>)
             } />
 
